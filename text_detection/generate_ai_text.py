@@ -28,6 +28,8 @@ def main() -> None:
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+    model = model.to("cpu")
+    model.eval()
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
