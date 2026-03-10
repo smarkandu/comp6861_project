@@ -7,10 +7,10 @@ MODEL_NAME = "gpt2"
 PROMPTS_PATH = "data/processed/human.csv"
 OUTPUT_PATH = "data/processed/ai.csv"
 
-NUM_SAMPLES = 1000
-MAX_NEW_TOKENS = 100
-TEMPERATURE = 0.9
-TOP_P = 0.95
+NUM_SAMPLES = 3
+MAX_NEW_TOKENS = 30
+TEMPERATURE = 0.8
+TOP_P = 0.9
 SEED = 42
 
 
@@ -36,8 +36,10 @@ def main() -> None:
 
     for i, full_text in enumerate(prompt_texts):
         prompt = full_text[:120].strip()
+        print(f"Starting sample {i + 1}/{len(prompt_texts)}")
 
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
@@ -49,6 +51,8 @@ def main() -> None:
             )
 
         generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        print(f"Finished sample {i + 1}/{len(prompt_texts)}")
+
         rows.append({
             "text": generated,
             "label": 1,
