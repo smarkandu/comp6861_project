@@ -4,9 +4,8 @@ import pandas as pd
 INPUT_PATH = "./data/raw/human_text.txt"
 OUTPUT_PATH = "./data/processed/human.csv"
 
-MIN_CHARS = 200
-MAX_CHARS = 1200
-
+MIN_CHARS = 20
+MAX_CHARS = 2000
 
 def split_into_paragraphs(text: str) -> list[str]:
     paragraphs = [p.strip() for p in text.split("\n\n")]
