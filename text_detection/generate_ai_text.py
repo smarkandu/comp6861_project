@@ -7,22 +7,16 @@ MODEL_NAME = "gpt2"
 PROMPTS_PATH = "data/processed/human.csv"
 OUTPUT_PATH = "data/processed/ai.csv"
 
-NUM_SAMPLES = 3
-MAX_NEW_TOKENS = 15
-SEED = 42
+BATCH_SIZE = 32
+MAX_NEW_TOKENS = 30
 
 
-def main() -> None:
-    os.makedirs("data/processed", exist_ok=True)
-    torch.manual_seed(SEED)
+def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    df_prompts = pd.read_csv(PROMPTS_PATH)
-    if len(df_prompts) == 0:
-        raise ValueError("No prompt data found in human.csv")
-
-    prompt_texts = df_prompts["text"].dropna().tolist()[:NUM_SAMPLES]
+    df = pd.read_csv(PROMPTS_PATH)
+    prompts = df["text"].dropna().tolist()
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(device)
@@ -33,32 +27,40 @@ def main() -> None:
 
     rows = []
 
-    for i, full_text in enumerate(prompt_texts):
-        prompt = full_text[:60].strip()
-        print(f"Starting sample {i + 1}/{len(prompt_texts)}")
+    for i in range(0, len(prompts), BATCH_SIZE):
 
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        batch = prompts[i:i+BATCH_SIZE]
+        batch = [p[:120] for p in batch]
+
+        print(f"Generating batch {i} → {i+len(batch)}")
+
+        inputs = tokenizer(
+            batch,
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        ).to(device)
 
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=MAX_NEW_TOKENS,
-                do_sample=False,
-                pad_token_id=tokenizer.eos_token_id
+                do_sample=True,
+                temperature=0.8,
+                top_p=0.9
             )
 
-        generated = tokenizer.decode(outputs[0].cpu(), skip_special_tokens=True)
-        print(f"Finished sample {i + 1}/{len(prompt_texts)}")
+        decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-        rows.append({
-            "text": generated,
-            "label": 1,
-            "source": MODEL_NAME
-        })
+        for text in decoded:
+            rows.append({
+                "text": text,
+                "label": 1,
+                "source": MODEL_NAME
+            })
 
     pd.DataFrame(rows).to_csv(OUTPUT_PATH, index=False)
-    print(f"Saved {len(rows)} AI samples to {OUTPUT_PATH}")
+    print(f"Saved {len(rows)} samples")
 
 
 if __name__ == "__main__":
