@@ -4,10 +4,8 @@ import pandas as pd
 INPUT_PATH = "./data/raw/human_text.txt"
 OUTPUT_PATH = "./data/processed/human.csv"
 
-NUM_SAMPLES = 3
-MAX_NEW_TOKENS = 30
-TEMPERATURE = 0.8
-TOP_P = 0.9
+MIN_CHARS = 20
+MAX_CHARS = 2000
 
 def split_into_paragraphs(text: str) -> list[str]:
     paragraphs = [p.strip() for p in text.split("\n\n")]
@@ -27,30 +25,20 @@ def main() -> None:
     paragraphs = split_into_paragraphs(text)
 
     rows = []
-for i, full_text in enumerate(prompt_texts):
-    prompt = full_text[:120].strip()
-    print(f"Starting sample {i + 1}/{len(prompt_texts)}")
+    for p in paragraphs:
+        p = clean_paragraph(p)
+        if MIN_CHARS <= len(p) <= MAX_CHARS:
+            rows.append({
+                "text": p,
+                "label": 0,
+                "source": "human"
+            })
 
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+    df = pd.DataFrame(rows)
+    df.to_csv(OUTPUT_PATH, index=False)
 
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=MAX_NEW_TOKENS,
-            do_sample=True,
-            temperature=TEMPERATURE,
-            top_p=TOP_P,
-            pad_token_id=tokenizer.eos_token_id
-        )
+    print(f"Saved {len(df)} human samples to {OUTPUT_PATH}")
 
-    generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    print(f"Finished sample {i + 1}/{len(prompt_texts)}")
-
-    rows.append({
-        "text": generated,
-        "label": 1,
-        "source": MODEL_NAME
-    })
 
 if __name__ == "__main__":
     main()
