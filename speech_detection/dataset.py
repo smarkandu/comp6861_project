@@ -4,7 +4,7 @@ from typing import List, Tuple
 import torch
 from torch.utils.data import Dataset
 
-from audio_utils import load_audio, extract_mfcc_features
+from utils_audio import load_audio, extract_mfcc_features
 
 
 def collect_audio_files(folder: str, label: int) -> List[Tuple[str, int]]:
