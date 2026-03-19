@@ -28,6 +28,6 @@ python --version
 python -m pip --version
 
 # Run your script
-python generate_synthetic_from_metadata.py
+python generate_synthetic_data.py
 
 echo "Finished at $(date)"
