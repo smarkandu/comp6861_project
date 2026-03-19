@@ -6,8 +6,8 @@ from dataset import SpeechAIDataset
 from model import AudioMLP
 
 
-HUMAN_DIR = "data/human"
-SYNTHETIC_DIR = "data/synthetic"
+HUMAN_DIR = "./data/human"
+SYNTHETIC_DIR = "./data/synthetic"
 
 BATCH_SIZE = 16
 EPOCHS = 10
