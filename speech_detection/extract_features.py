@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from utils_audio import load_audio, extract_mfcc
+from utils_audio import load_audio, extract_mfcc_features
 
 DATA_DIR = "data"
 OUT_PATH = "audio_features.csv"
