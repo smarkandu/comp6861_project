@@ -6,7 +6,7 @@ from dataset import SpeechAIDataset
 from model import AudioMLP
 
 
-HUMAN_DIR = "./data/human"
+HUMAN_DIR = "./data/human/LJSpeech-1.1/wavs"
 SYNTHETIC_DIR = "./data/synthetic"
 
 BATCH_SIZE = 16
