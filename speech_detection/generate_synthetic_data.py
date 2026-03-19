@@ -1,5 +1,4 @@
 import os
-import csv
 import asyncio
 import pandas as pd
 import edge_tts
@@ -42,43 +41,64 @@ async def main():
     print(f"[INFO] Voice: {VOICE}")
     print("================================================\n")
 
-    # --- Load CSV ---
-    print("[STEP 1] Loading CSV...")
-    df = pd.read_csv(INPUT_CSV, sep="|", header=None)
-    print(f"[INFO] Loaded {len(df)} rows")
-
-    if len(df) == 0:
-        print("[ERROR] CSV is empty. Exiting.")
+    if not os.path.exists(INPUT_CSV):
+        print(f"[ERROR] Input file does not exist: {INPUT_CSV}")
         return
 
-    print(f"[INFO] Columns: {list(df.columns)}\n")
+    print("[STEP 1] Loading metadata file...")
+    try:
+        df = pd.read_csv(
+            INPUT_CSV,
+            sep="|",
+            header=None,
+            names=["id", "transcript", "text"],
+            engine="python"
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to read metadata: {e}")
+        return
+
+    print(f"[INFO] Loaded {len(df)} rows")
+    print(f"[INFO] Columns: {list(df.columns)}")
+    print("[INFO] First 3 parsed rows:")
+    print(df.head(3).to_string())
 
     rows = []
     success_count = 0
     fail_count = 0
+    skip_count = 0
 
-    print("[STEP 2] Starting synthesis loop...\n")
+    print("\n[STEP 2] Starting synthesis loop...\n")
 
     for i, row in df.iterrows():
         print(f"\n[PROCESS] Row {i+1}/{len(df)}")
 
+        sample_id = str(row["id"]).strip()
         text = str(row["text"]).strip()
 
-        if not text:
+        if not text or text.lower() == "nan":
             print("  [SKIP] Empty text")
+            skip_count += 1
             continue
 
-        sample_id = row["id"] if "id" in df.columns else f"{i:06d}"
         out_file = os.path.join(OUT_DIR, f"{sample_id}.mp3")
 
         print(f"  [INFO] Sample ID: {sample_id}")
-        print(f"  [INFO] Text length: {len(text)} chars")
+        print(f"  [INFO] Text preview: {text[:100]}{'...' if len(text) > 100 else ''}")
+        print(f"  [INFO] Text length: {len(text)}")
         print(f"  [INFO] Output file: {out_file}")
 
-        # Skip if already exists (VERY useful on Narval reruns)
         if os.path.exists(out_file):
-            print(f"  [SKIP] File already exists")
-            success_count += 1
+            print("  [SKIP] Output file already exists")
+            rows.append({
+                "id": sample_id,
+                "text": text,
+                "audio_path": out_file,
+                "label": 1,
+                "source": "synthetic",
+                "voice": VOICE
+            })
+            skip_count += 1
             continue
 
         try:
@@ -94,34 +114,33 @@ async def main():
             })
 
             success_count += 1
-            print(f"  [OK] Completed {sample_id}")
+            print(f"  [OK] Finished {sample_id}")
 
         except Exception as e:
             fail_count += 1
             print(f"  [FAIL] {sample_id}: {e}")
 
-        # Optional: small delay to avoid rate limits
-        await asyncio.sleep(0.1)
-
-        # Progress summary every 50 samples
         if (i + 1) % 50 == 0:
             print("\n===== PROGRESS =====")
             print(f"Processed: {i+1}/{len(df)}")
-            print(f"Success: {success_count}")
-            print(f"Failed: {fail_count}")
+            print(f"Success:   {success_count}")
+            print(f"Skipped:   {skip_count}")
+            print(f"Failed:    {fail_count}")
             print("====================\n")
 
-    # --- Save CSV ---
-    print("\n[STEP 3] Saving metadata...")
+        await asyncio.sleep(0.1)
 
+    print("[STEP 3] Writing metadata...")
     out_df = pd.DataFrame(rows)
     out_df.to_csv(OUT_CSV, index=False)
 
-    print(f"[DONE] Metadata saved to: {OUT_CSV}")
+    print(f"[DONE] Saved metadata to: {OUT_CSV}")
     print("\n========== FINAL SUMMARY ==========")
-    print(f"Total: {len(df)}")
-    print(f"Success: {success_count}")
-    print(f"Failed: {fail_count}")
+    print(f"Total rows: {len(df)}")
+    print(f"Success:    {success_count}")
+    print(f"Skipped:    {skip_count}")
+    print(f"Failed:     {fail_count}")
+    print(f"Written:    {len(out_df)}")
     print("===================================")
 
 
