@@ -19,7 +19,7 @@ def collect_files(folder, label):
         path = os.path.join(folder, file)
 
         audio = load_audio(path)
-        features = extract_mfcc(audio)
+        features = extract_mfcc_features(audio)
 
         row = {
             "label": label
