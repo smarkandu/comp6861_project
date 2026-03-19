@@ -5,6 +5,8 @@
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
+#SBATCH --mail-user=s_markan@hotmail.com
+#SBATCH --mail-type=BEGIN,END,FAIL
 
 set -euo pipefail
 
