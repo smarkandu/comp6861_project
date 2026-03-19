@@ -44,7 +44,7 @@ async def main():
 
     # --- Load CSV ---
     print("[STEP 1] Loading CSV...")
-    df = pd.read_csv(INPUT_CSV)
+    df = pd.read_csv(INPUT_CSV, sep="|", header=None)
     print(f"[INFO] Loaded {len(df)} rows")
 
     if len(df) == 0:
