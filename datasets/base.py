@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
 import numpy as np
-
+from datasets.diarizationsample import DiarizationSample
 
 Event = Dict[str, Any]
 

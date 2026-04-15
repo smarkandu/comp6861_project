@@ -8,6 +8,7 @@ import torch
 from scipy.signal import medfilt
 from sklearn.cluster import KMeans
 from speechbrain.inference.classifiers import EncoderClassifier
+from speechbrain.utils.fetching import LocalStrategy
 
 
 @dataclass
@@ -50,12 +51,10 @@ class BaselineDiarizer:
         self.device = device
         self.random_state = random_state
 
-        # SpeechBrain supports loading the pretrained ECAPA speaker model
-        # from Hugging Face with from_hparams(...).
         self.classifier = EncoderClassifier.from_hparams(
-            source=ecapa_source,
-            savedir=ecapa_savedir,
-            run_opts={"device": device},
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir="pretrained_ecapa",
+            local_strategy=LocalStrategy.COPY,
         )
 
     def predict(self, sample: Any) -> DiarizationResult:
@@ -221,4 +220,4 @@ class BaselineDiarizer:
         if hasattr(sample, "selected_speakers"):
             return len(sample.selected_speakers)
 
-        return None
+        return 4 # None SMD temp
