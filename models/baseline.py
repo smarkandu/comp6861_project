@@ -1,112 +1,224 @@
-import json
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, List, Sequence, Tuple
+
 import numpy as np
-import soundfile as sf
-from sklearn.cluster import KMeans
+import torch
 from scipy.signal import medfilt
-
-from speechbrain.inference.speaker import EncoderClassifier
-
-
-TARGET_SR = 16000
-WINDOW_SEC = 1.5
-HOP_SEC = 0.75
-SMOOTH_KERNEL = 3
+from sklearn.cluster import KMeans
+from speechbrain.inference.classifiers import EncoderClassifier
 
 
-def load_audio(path):
-    audio, sr = sf.read(path)
-    if audio.ndim > 1:
-        audio = audio.mean(axis=1)
-    if sr != TARGET_SR:
-        import librosa
-        audio = librosa.resample(audio.astype(np.float32), orig_sr=sr, target_sr=TARGET_SR)
-    return audio.astype(np.float32)
+@dataclass
+class DiarizationSegment:
+    start: float
+    end: float
+    speaker: str
+
+    def __str__(self) -> str:
+        return f"{self.start:.2f} - {self.end:.2f} : {self.speaker}"
 
 
-def make_windows(audio, sr=16000, window_sec=1.5, hop_sec=0.75):
-    win = int(window_sec * sr)
-    hop = int(hop_sec * sr)
-    windows, times = [], []
-
-    for start in range(0, len(audio) - win + 1, hop):
-        end = start + win
-        windows.append(audio[start:end])
-        times.append((start / sr, end / sr))
-
-    return windows, times
+@dataclass
+class DiarizationResult:
+    recording_id: str
+    segments: List[DiarizationSegment]
 
 
-def extract_ecapa_embeddings(windows, classifier):
-    embs = []
-    for w in windows:
-        wav = classifier.audio_normalizer(w, sample_rate=TARGET_SR)
-        wav = wav.unsqueeze(0)
-        emb = classifier.encode_batch(wav).squeeze().detach().cpu().numpy()
-        embs.append(emb)
-    return np.vstack(embs)
+class BaselineDiarizer:
+    """
+    Baseline diarization pipeline:
+        audio -> sliding windows -> ECAPA embeddings -> KMeans -> smoothing -> merged segments
+    """
 
+    def __init__(
+        self,
+        target_sr: int = 16000,
+        window_sec: float = 1.5,
+        hop_sec: float = 0.75,
+        smoothing_kernel: int = 3,
+        device: str = "cpu",
+        ecapa_source: str = "speechbrain/spkrec-ecapa-voxceleb",
+        ecapa_savedir: str = "pretrained_ecapa",
+        random_state: int = 42,
+    ) -> None:
+        self.target_sr = target_sr
+        self.window_sec = window_sec
+        self.hop_sec = hop_sec
+        self.smoothing_kernel = smoothing_kernel
+        self.device = device
+        self.random_state = random_state
 
-def cluster_embeddings(embeddings, n_speakers):
-    km = KMeans(n_clusters=n_speakers, random_state=42, n_init=10)
-    labels = km.fit_predict(embeddings)
-    return labels
+        # SpeechBrain supports loading the pretrained ECAPA speaker model
+        # from Hugging Face with from_hparams(...).
+        self.classifier = EncoderClassifier.from_hparams(
+            source=ecapa_source,
+            savedir=ecapa_savedir,
+            run_opts={"device": device},
+        )
 
+    def predict(self, sample: Any) -> DiarizationResult:
+        """
+        Expected sample formats:
+          1) dict-like with keys:
+             - "audio": waveform as numpy array
+             - "sr": sample rate
+             - "recording_id": string
+             - "selected_speakers": list[str] OR "n_speakers": int
+          2) object with equivalent attributes
 
-def smooth_labels(labels, kernel_size=3):
-    if kernel_size <= 1:
-        return labels
-    return medfilt(labels, kernel_size=kernel_size).astype(int)
+        Returns:
+            DiarizationResult
+        """
+        audio = self._get_field(sample, "audio")
+        sr = self._get_field(sample, "sr")
+        recording_id = self._get_field(sample, "recording_id", default="unknown")
 
+        n_speakers = self._infer_num_speakers(sample)
+        if n_speakers is None:
+            raise ValueError(
+                "BaselineDiarizer requires the number of speakers. "
+                "Provide sample['n_speakers'] or sample['selected_speakers']."
+            )
 
-def merge_segments(times, labels):
-    if len(labels) == 0:
-        return []
+        audio = self._prepare_audio(audio, sr)
+        windows, times = self._make_windows(audio)
 
-    segments = []
-    cur_label = labels[0]
-    cur_start = times[0][0]
-    cur_end = times[0][1]
+        if len(windows) == 0:
+            return DiarizationResult(recording_id=recording_id, segments=[])
 
-    for i in range(1, len(labels)):
-        if labels[i] == cur_label:
-            cur_end = times[i][1]
-        else:
-            segments.append((cur_start, cur_end, int(cur_label)))
-            cur_label = labels[i]
-            cur_start = times[i][0]
-            cur_end = times[i][1]
+        embeddings = self._extract_embeddings(windows)
+        labels = self._cluster_embeddings(embeddings, n_speakers)
+        labels = self._smooth_labels(labels, self.smoothing_kernel)
+        merged = self._merge_segments(times, labels)
 
-    segments.append((cur_start, cur_end, int(cur_label)))
-    return segments
+        segments = [
+            DiarizationSegment(start=s, end=e, speaker=f"cluster_{lab}")
+            for s, e, lab in merged
+        ]
+        return DiarizationResult(recording_id=recording_id, segments=segments)
 
+    def _prepare_audio(self, audio: np.ndarray, sr: int) -> np.ndarray:
+        audio = np.asarray(audio, dtype=np.float32)
 
-def main(audio_path, label_path):
-    with open(label_path, "r", encoding="utf-8") as f:
-        label_data = json.load(f)
+        # Stereo -> mono
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
 
-    n_speakers = len(label_data["selected_speakers"])
+        if sr != self.target_sr:
+            import librosa
+            audio = librosa.resample(
+                audio,
+                orig_sr=sr,
+                target_sr=self.target_sr,
+            )
 
-    audio = load_audio(audio_path)
-    windows, times = make_windows(audio, TARGET_SR, WINDOW_SEC, HOP_SEC)
+        return audio.astype(np.float32)
 
-    classifier = EncoderClassifier.from_hparams(
-        source="speechbrain/spkrec-ecapa-voxceleb",
-        savedir="pretrained_ecapa"
-    )
+    def _make_windows(
+        self,
+        audio: np.ndarray,
+    ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
+        win = int(self.window_sec * self.target_sr)
+        hop = int(self.hop_sec * self.target_sr)
 
-    embeddings = extract_ecapa_embeddings(windows, classifier)
-    labels = cluster_embeddings(embeddings, n_speakers)
-    labels = smooth_labels(labels, kernel_size=SMOOTH_KERNEL)
+        windows: List[np.ndarray] = []
+        times: List[Tuple[float, float]] = []
 
-    segments = merge_segments(times, labels)
+        for start in range(0, len(audio) - win + 1, hop):
+            end = start + win
+            windows.append(audio[start:end])
+            times.append((start / self.target_sr, end / self.target_sr))
 
-    print("Predicted segments:")
-    for s, e, lab in segments:
-        print(f"{s:.2f} - {e:.2f} : cluster_{lab}")
+        return windows, times
 
+    def _extract_embeddings(self, windows: Sequence[np.ndarray]) -> np.ndarray:
+        embs = []
 
-if __name__ == "__main__":
-    main(
-        "data/generated/audio/sample_0000.wav",
-        "data/generated/labels/sample_0000.json"
-    )
+        for w in windows:
+            wav = torch.tensor(w, dtype=torch.float32, device=self.device)
+
+            # Your earlier script used classifier.audio_normalizer(...),
+            # which is a common practical pattern with SpeechBrain
+            # before calling encode_batch(...).
+            wav = self.classifier.audio_normalizer(wav, sample_rate=self.target_sr)
+            wav = wav.unsqueeze(0)
+
+            with torch.no_grad():
+                emb = self.classifier.encode_batch(wav)
+
+            emb = emb.squeeze().detach().cpu().numpy()
+            embs.append(emb)
+
+        return np.vstack(embs)
+
+    def _cluster_embeddings(
+        self,
+        embeddings: np.ndarray,
+        n_speakers: int,
+    ) -> np.ndarray:
+        km = KMeans(
+            n_clusters=n_speakers,
+            random_state=self.random_state,
+            n_init=10,
+        )
+        return km.fit_predict(embeddings)
+
+    def _smooth_labels(self, labels: np.ndarray, kernel_size: int) -> np.ndarray:
+        if kernel_size <= 1:
+            return labels.astype(int)
+
+        if kernel_size % 2 == 0:
+            kernel_size += 1  # medfilt expects an odd kernel for 1D best practice
+
+        return medfilt(labels, kernel_size=kernel_size).astype(int)
+
+    def _merge_segments(
+        self,
+        times: Sequence[Tuple[float, float]],
+        labels: np.ndarray,
+    ) -> List[Tuple[float, float, int]]:
+        if len(labels) == 0:
+            return []
+
+        segments: List[Tuple[float, float, int]] = []
+
+        cur_label = int(labels[0])
+        cur_start = times[0][0]
+        cur_end = times[0][1]
+
+        for i in range(1, len(labels)):
+            lab = int(labels[i])
+            if lab == cur_label:
+                cur_end = times[i][1]
+            else:
+                segments.append((cur_start, cur_end, cur_label))
+                cur_label = lab
+                cur_start = times[i][0]
+                cur_end = times[i][1]
+
+        segments.append((cur_start, cur_end, cur_label))
+        return segments
+
+    @staticmethod
+    def _get_field(sample: Any, key: str, default: Any = None) -> Any:
+        if isinstance(sample, dict):
+            return sample.get(key, default)
+        return getattr(sample, key, default)
+
+    @staticmethod
+    def _infer_num_speakers(sample: Any) -> int | None:
+        if isinstance(sample, dict):
+            if "n_speakers" in sample:
+                return int(sample["n_speakers"])
+            if "selected_speakers" in sample:
+                return len(sample["selected_speakers"])
+            return None
+
+        if hasattr(sample, "n_speakers"):
+            return int(sample.n_speakers)
+        if hasattr(sample, "selected_speakers"):
+            return len(sample.selected_speakers)
+
+        return None

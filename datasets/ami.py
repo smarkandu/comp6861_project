@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import soundfile as sf
 import librosa
 import numpy as np
-import BaseDiarizationDataset
+from datasets.base import BaseDiarizationDataset
 
 class AMIDataset(BaseDiarizationDataset):
     def __init__(self, audio_dir: str, annotation_dir: str, target_sr: int = 16000):

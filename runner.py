@@ -2,8 +2,8 @@ from datasets.ami import AMIDataset
 from models.baseline import BaselineDiarizer
 
 dataset = AMIDataset(
-    audio_dir="./data/ami/audio",
-    annotation_dir="./data/ami/annotations",
+    audio_dir="./data/amicorpus/ES2002a/audio",
+    annotation_dir="./data/ami_public_manual_1.6.2/segments",
     target_sr=16000,
 )
 
