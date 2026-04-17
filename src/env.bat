@@ -1,0 +1,1 @@
+.\comp6861_env\Scripts\activate

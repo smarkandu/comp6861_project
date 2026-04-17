@@ -175,27 +175,36 @@ class BaselineDiarizer:
 
     def _merge_segments(
         self,
-        times: Sequence[Tuple[float, float]],
-        labels: np.ndarray,
-    ) -> List[Tuple[float, float, int]]:
+        times,
+        labels,
+    ):
         if len(labels) == 0:
             return []
 
-        segments: List[Tuple[float, float, int]] = []
+        segments = []
+
+        # Convert overlapping windows into non-overlapping hop-based regions.
+        # Each label is treated as covering [window_start, next_window_start),
+        # and the last one ends at the final window end.
+        interval_starts = [t[0] for t in times]
+        interval_ends = interval_starts[1:] + [times[-1][1]]
 
         cur_label = int(labels[0])
-        cur_start = times[0][0]
-        cur_end = times[0][1]
+        cur_start = interval_starts[0]
+        cur_end = interval_ends[0]
 
         for i in range(1, len(labels)):
             lab = int(labels[i])
+            start_i = interval_starts[i]
+            end_i = interval_ends[i]
+
             if lab == cur_label:
-                cur_end = times[i][1]
+                cur_end = end_i
             else:
                 segments.append((cur_start, cur_end, cur_label))
                 cur_label = lab
-                cur_start = times[i][0]
-                cur_end = times[i][1]
+                cur_start = start_i
+                cur_end = end_i
 
         segments.append((cur_start, cur_end, cur_label))
         return segments

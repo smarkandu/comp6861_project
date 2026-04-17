@@ -4,8 +4,8 @@ import torch
 
 
 dataset = AMIDataset(
-    audio_dir="./data/amicorpus/ES2002a/audio",
-    annotation_dir="./data/ami_public_manual_1.6.2",
+    audio_dir="../data/amicorpus/ES2002a/audio",
+    annotation_dir="../data/ami_public_manual_1.6.2",
     target_sr=16000,
 )
 

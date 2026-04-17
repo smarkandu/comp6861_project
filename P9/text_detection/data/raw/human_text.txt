@@ -1,5 +1,0 @@
-Photosynthesis is the process by which green plants and some other organisms use sunlight to synthesize foods from carbon dioxide and water.
-
-Databases use indexes to speed up search operations by reducing the amount of data that must be scanned.
-
-Exercise improves cardiovascular health, muscle strength, and overall well-being when performed consistently.
