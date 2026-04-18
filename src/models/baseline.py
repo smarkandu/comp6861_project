@@ -81,16 +81,30 @@ class BaselineDiarizer:
                 "Provide sample['n_speakers'] or sample['selected_speakers']."
             )
 
+        print("[Diarizer] Preparing audio...")
         audio = self._prepare_audio(audio, sr)
+
+        print("[Diarizer] Creating sliding windows...")
         windows, times = self._make_windows(audio)
+        print(f"[Diarizer] Total windows: {len(windows)}")
 
         if len(windows) == 0:
+            print("[Diarizer] No windows found.")
             return DiarizationResult(recording_id=recording_id, segments=[])
 
+        print("[Diarizer] Extracting embeddings...")
         embeddings = self._extract_embeddings(windows)
+
+        print("[Diarizer] Clustering embeddings...")
         labels = self._cluster_embeddings(embeddings, n_speakers)
+
+        print("[Diarizer] Smoothing labels...")
         labels = self._smooth_labels(labels, self.smoothing_kernel)
+
+        print("[Diarizer] Merging segments...")
         merged = self._merge_segments(times, labels)
+
+        print("[Diarizer] Done.")
 
         segments = [
             DiarizationSegment(start=s, end=e, speaker=f"cluster_{lab}")
@@ -133,14 +147,31 @@ class BaselineDiarizer:
         return windows, times
 
     def _extract_embeddings(self, windows: Sequence[np.ndarray]) -> np.ndarray:
+        import time
+
         embs = []
+        total = len(windows)
+        start_time = time.time()
 
-        for w in windows:
+        print(f"[Embeddings] Starting extraction...")
+        print(f"[Embeddings] Total windows: {total}")
+        print(f"[Embeddings] Device: {self.device}")
+
+        for i, w in enumerate(windows):
+
+            # 👇 PROGRESS PRINT HERE
+            if i % 50 == 0 or i == total - 1:
+                elapsed = time.time() - start_time
+                progress = i / total
+                eta = elapsed * (1 - progress) / progress if progress > 0 else 0
+
+                print(f"[Embeddings] {i}/{total} "
+                    f"({progress*100:.1f}%) "
+                    f"| Elapsed: {elapsed:.1f}s "
+                    f"| ETA: {eta:.1f}s")
+
+            # --- existing code ---
             wav = torch.tensor(w, dtype=torch.float32, device=self.device)
-
-            # Your earlier script used classifier.audio_normalizer(...),
-            # which is a common practical pattern with SpeechBrain
-            # before calling encode_batch(...).
             wav = self.classifier.audio_normalizer(wav, sample_rate=self.target_sr)
             wav = wav.unsqueeze(0)
 
@@ -150,7 +181,12 @@ class BaselineDiarizer:
             emb = emb.squeeze().detach().cpu().numpy()
             embs.append(emb)
 
-        return np.vstack(embs)
+        embeddings = np.vstack(embs)
+
+        print("[Embeddings] Finished.")
+        print(f"[Embeddings] Shape: {embeddings.shape}")
+
+        return embeddings
 
     def _cluster_embeddings(
         self,
@@ -217,16 +253,24 @@ class BaselineDiarizer:
 
     @staticmethod
     def _infer_num_speakers(sample: Any) -> int | None:
+        # Dict-style access
         if isinstance(sample, dict):
             if "n_speakers" in sample:
                 return int(sample["n_speakers"])
             if "selected_speakers" in sample:
                 return len(sample["selected_speakers"])
+            if "speakers" in sample:
+                return len(sample["speakers"])
             return None
 
+        # Object-style access
         if hasattr(sample, "n_speakers"):
             return int(sample.n_speakers)
         if hasattr(sample, "selected_speakers"):
             return len(sample.selected_speakers)
+        if hasattr(sample, "num_speakers"):
+            return int(sample.num_speakers)
+        if hasattr(sample, "speakers"):
+            return len(sample.speakers)
 
-        return 4 # None SMD temp
+        return None
