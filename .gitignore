@@ -5,3 +5,4 @@ data/
 models/__pycache__/baseline.cpython-312.pyc
 *.bak
 pretrained_ecapa/
+*.pyc

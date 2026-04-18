@@ -1,11 +1,26 @@
 from datasets.ami import AMIDataset
 from models.baseline import BaselineDiarizer
 import torch
+from eval.evaluation import (
+    events_to_frame_sets,
+    segments_to_frame_sets,
+    map_clusters_to_speakers,
+    apply_mapping_to_frame_sets,
+    compute_der,
+)
+from pathlib import Path
 
+# Get current file location
+ROOT = Path(__file__).resolve().parent
+
+# From this position, obtain project folder
+# <project_root>/src/runner.py
+ROOT = ROOT.parent
+ROOT = str(ROOT)
 
 dataset = AMIDataset(
-    audio_dir="../data/amicorpus/ES2002a/audio",
-    annotation_dir="../data/ami_public_manual_1.6.2",
+    audio_dir= f"{ROOT}/data/amicorpus/ES2002a/audio",
+    annotation_dir=f"{ROOT}/data/ami_public_manual_1.6.2",
     target_sr=16000,
 )
 
