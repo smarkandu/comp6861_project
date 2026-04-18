@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, List, Sequence, Tuple
 
 import numpy as np
 import torch
 from scipy.signal import medfilt
-from sklearn.cluster import KMeans
 from speechbrain.inference.classifiers import EncoderClassifier
 from speechbrain.utils.fetching import LocalStrategy
 
@@ -31,6 +31,12 @@ class BaselineDiarizer:
     """
     Baseline diarization pipeline:
         audio -> sliding windows -> ECAPA embeddings -> KMeans -> smoothing -> merged segments
+
+    Embedding cache behavior:
+        - On the first run for a given recording/configuration, embeddings are computed and
+          saved to disk.
+        - On later runs with the same configuration, embeddings are loaded from disk instead
+          of being recomputed.
     """
 
     def __init__(
@@ -43,6 +49,8 @@ class BaselineDiarizer:
         ecapa_source: str = "speechbrain/spkrec-ecapa-voxceleb",
         ecapa_savedir: str = "pretrained_ecapa",
         random_state: int = 42,
+        cache_dir: str | Path = "./outputs/cache",
+        use_embedding_cache: bool = True,
     ) -> None:
         self.target_sr = target_sr
         self.window_sec = window_sec
@@ -50,10 +58,15 @@ class BaselineDiarizer:
         self.smoothing_kernel = smoothing_kernel
         self.device = device
         self.random_state = random_state
+        self.cache_dir = Path(cache_dir)
+        self.use_embedding_cache = use_embedding_cache
+
+        # Ensure the cache directory exists before inference starts.
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.classifier = EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir="pretrained_ecapa",
+            source=ecapa_source,
+            savedir=ecapa_savedir,
             local_strategy=LocalStrategy.COPY,
         )
 
@@ -92,8 +105,32 @@ class BaselineDiarizer:
             print("[Diarizer] No windows found.")
             return DiarizationResult(recording_id=recording_id, segments=[])
 
-        print("[Diarizer] Extracting embeddings...")
-        embeddings = self._extract_embeddings(windows)
+        # Load cached embeddings when available so that repeated experiments do not
+        # have to recompute the most expensive step of the pipeline.
+        embeddings = None
+        cache_path = self._get_cache_path(recording_id)
+
+        if self.use_embedding_cache and cache_path.exists():
+            print(f"[Cache] Loading embeddings from {cache_path}")
+            cache = np.load(cache_path, allow_pickle=False)
+            embeddings = cache["embeddings"]
+            cached_times = cache["times"]
+
+            # Rebuild the list of (start, end) tuples from the saved NumPy array so the
+            # rest of the pipeline can keep using the same format as before.
+            times = [tuple(row) for row in cached_times.tolist()]
+
+        if embeddings is None:
+            print("[Diarizer] Extracting embeddings...")
+            embeddings = self._extract_embeddings(windows)
+
+            if self.use_embedding_cache:
+                print(f"[Cache] Saving embeddings to {cache_path}")
+                np.savez_compressed(
+                    cache_path,
+                    embeddings=embeddings,
+                    times=np.asarray(times, dtype=np.float32),
+                )
 
         print("[Diarizer] Clustering embeddings...")
         labels = self._cluster_embeddings(embeddings, n_speakers)
@@ -148,6 +185,7 @@ class BaselineDiarizer:
 
     def _extract_embeddings(self, windows: Sequence[np.ndarray]) -> np.ndarray:
         import time
+        from sklearn.cluster import KMeans  # retained from the current baseline structure
 
         embs = []
         total = len(windows)
@@ -158,19 +196,19 @@ class BaselineDiarizer:
         print(f"[Embeddings] Device: {self.device}")
 
         for i, w in enumerate(windows):
-
-            # 👇 PROGRESS PRINT HERE
+            # Progress print so long recordings do not appear stuck.
             if i % 50 == 0 or i == total - 1:
                 elapsed = time.time() - start_time
                 progress = i / total
                 eta = elapsed * (1 - progress) / progress if progress > 0 else 0
 
-                print(f"[Embeddings] {i}/{total} "
-                    f"({progress*100:.1f}%) "
+                print(
+                    f"[Embeddings] {i}/{total} "
+                    f"({progress * 100:.1f}%) "
                     f"| Elapsed: {elapsed:.1f}s "
-                    f"| ETA: {eta:.1f}s")
+                    f"| ETA: {eta:.1f}s"
+                )
 
-            # --- existing code ---
             wav = torch.tensor(w, dtype=torch.float32, device=self.device)
             wav = self.classifier.audio_normalizer(wav, sample_rate=self.target_sr)
             wav = wav.unsqueeze(0)
@@ -193,6 +231,8 @@ class BaselineDiarizer:
         embeddings: np.ndarray,
         n_speakers: int,
     ) -> np.ndarray:
+        from sklearn.cluster import KMeans
+
         km = KMeans(
             n_clusters=n_speakers,
             random_state=self.random_state,
@@ -205,7 +245,7 @@ class BaselineDiarizer:
             return labels.astype(int)
 
         if kernel_size % 2 == 0:
-            kernel_size += 1  # medfilt expects an odd kernel for 1D best practice
+            kernel_size += 1
 
         return medfilt(labels, kernel_size=kernel_size).astype(int)
 
@@ -219,9 +259,6 @@ class BaselineDiarizer:
 
         segments = []
 
-        # Convert overlapping windows into non-overlapping hop-based regions.
-        # Each label is treated as covering [window_start, next_window_start),
-        # and the last one ends at the final window end.
         interval_starts = [t[0] for t in times]
         interval_ends = interval_starts[1:] + [times[-1][1]]
 
@@ -245,6 +282,16 @@ class BaselineDiarizer:
         segments.append((cur_start, cur_end, cur_label))
         return segments
 
+    def _get_cache_path(self, recording_id: str) -> Path:
+        """
+        Build a cache filename that depends on the recording ID and the major windowing
+        parameters. This prevents reuse of stale embeddings when those settings change.
+        """
+        safe_id = recording_id.replace("/", "_").replace("\\", "_")
+        return self.cache_dir / (
+            f"{safe_id}_sr{self.target_sr}_w{self.window_sec:g}_h{self.hop_sec:g}.npz"
+        )
+
     @staticmethod
     def _get_field(sample: Any, key: str, default: Any = None) -> Any:
         if isinstance(sample, dict):
@@ -253,7 +300,6 @@ class BaselineDiarizer:
 
     @staticmethod
     def _infer_num_speakers(sample: Any) -> int | None:
-        # Dict-style access
         if isinstance(sample, dict):
             if "n_speakers" in sample:
                 return int(sample["n_speakers"])
@@ -263,7 +309,6 @@ class BaselineDiarizer:
                 return len(sample["speakers"])
             return None
 
-        # Object-style access
         if hasattr(sample, "n_speakers"):
             return int(sample.n_speakers)
         if hasattr(sample, "selected_speakers"):

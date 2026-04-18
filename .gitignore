@@ -1,8 +1,8 @@
 metadata.csv
-datasets/__pycache__/
 comp6861_env/
 data/
-models/__pycache__/baseline.cpython-312.pyc
 *.bak
 pretrained_ecapa/
 *.pyc
+*.txt
+*.npz
