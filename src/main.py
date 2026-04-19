@@ -52,6 +52,27 @@ def main():
         help="Path to annotation directory"
     )
 
+    parser.add_argument(
+        "--vad-threshold",
+        type=float,
+        default=8e-5,
+        help="Energy threshold for silence filtering (default: 1e-4)"
+    )
+
+    parser.add_argument(
+    "--window-sec",
+    type=float,
+    default=1.5,
+    help="Sliding window length in seconds (default: 1.5)"
+    )
+
+    parser.add_argument(
+        "--hop-sec",
+        type=float,
+        default=0.75,
+        help="Sliding window hop in seconds (default: 0.75)"
+    )    
+
     args = parser.parse_args()
 
     run_pipeline(
@@ -59,7 +80,10 @@ def main():
         audio_dir=args.audio_dir,
         annotation_dir=args.annotation_dir,
         recording_id=args.recording_id,
-        debug=args.debug
+        debug=args.debug,
+        vad_threshold=args.vad_threshold,
+        window_sec=args.window_sec,
+        hop_sec=args.hop_sec
     )
 
 

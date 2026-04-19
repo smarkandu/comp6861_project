@@ -42,8 +42,8 @@ class BaselineDiarizer:
     def __init__(
         self,
         target_sr: int = 16000,
-        window_sec: float = 1.5,
-        hop_sec: float = 0.75,
+        window_sec: float = 2,
+        hop_sec: float = 1,
         smoothing_kernel: int = 3,
         device: str = "cpu",
         ecapa_source: str = "speechbrain/spkrec-ecapa-voxceleb",
@@ -51,6 +51,7 @@ class BaselineDiarizer:
         random_state: int = 42,
         cache_dir: str | Path = "./outputs/cache",
         use_embedding_cache: bool = True,
+        vad_threshold = 1e-4,
     ) -> None:
         self.target_sr = target_sr
         self.window_sec = window_sec
@@ -60,6 +61,7 @@ class BaselineDiarizer:
         self.random_state = random_state
         self.cache_dir = Path(cache_dir)
         self.use_embedding_cache = use_embedding_cache
+        self.vad_threshold = vad_threshold
 
         # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -239,7 +241,7 @@ class BaselineDiarizer:
         km = KMeans(
             n_clusters=n_speakers,
             random_state=self.random_state,
-            n_init=10,
+            n_init=20,
         )
         return km.fit_predict(embeddings)
 
@@ -263,7 +265,7 @@ class BaselineDiarizer:
         segments = []
 
         interval_starts = [t[0] for t in times]
-        interval_ends = interval_starts[1:] + [times[-1][1]]
+        interval_ends = [t[1] for t in times]
 
         cur_label = int(labels[0])
         cur_start = interval_starts[0]
@@ -286,13 +288,15 @@ class BaselineDiarizer:
         return segments
 
     def _get_cache_path(self, recording_id: str) -> Path:
-        """
-        Build a cache filename that depends on the recording ID and the major windowing
-        parameters. This prevents reuse of stale embeddings when those settings change.
-        """
         safe_id = recording_id.replace("/", "_").replace("\\", "_")
+        vad_str = str(self.vad_threshold).replace(".", "p")
+
         return self.cache_dir / (
-            f"{safe_id}_sr{self.target_sr}_w{self.window_sec:g}_h{self.hop_sec:g}.npz"
+            f"{safe_id}"
+            f"_sr{self.target_sr}"
+            f"_w{self.window_sec:g}"
+            f"_h{self.hop_sec:g}"
+            f"_vad{vad_str}.npz"
         )
 
     @staticmethod
@@ -323,14 +327,16 @@ class BaselineDiarizer:
 
         return None
 
-    def _filter_silence(self, windows, times, threshold=0.01):
+    def _filter_silence(self, windows, times):
         kept_windows = []
         kept_times = []
 
         for w, t in zip(windows, times):
             energy = np.mean(w ** 2)
-            if energy > threshold:
+            if energy > self.vad_threshold:
                 kept_windows.append(w)
                 kept_times.append(t)
 
+        print(f"[VAD] Threshold: {self.vad_threshold}")
+        print(f"[VAD] Kept {len(kept_windows)} / {len(windows)} windows")                
         return kept_windows, kept_times

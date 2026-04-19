@@ -40,7 +40,16 @@ def print_metrics(metrics: dict) -> None:
             print(f"{key}: {value}")
 
 
-def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug):
+def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec):
+    print("\n=== Run Configuration ===")
+    print(f"audio_dir:      {audio_dir}")
+    print(f"annotation_dir: {annotation_dir}")
+    print(f"recording_id:   {recording_id}")
+    print(f"debug:          {debug}")
+    print(f"vad_threshold:  {vad_threshold}")
+    print(f"window_sec:     {window_sec}")
+    print(f"hop_sec:        {hop_sec}")
+
     print("=== Starting Diarization Pipeline ===")
 
     print("\n[1/7] Loading dataset...")
@@ -71,12 +80,13 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[4/7] Initializing model on {device}...")
     model = BaselineDiarizer(
-        target_sr=16000,
-        window_sec=1.5,
-        hop_sec=0.75,
-        smoothing_kernel=3,
-        device=device,
-    )
+                target_sr=16000,
+                window_sec=window_sec,
+                hop_sec=hop_sec,
+                smoothing_kernel=3,
+                device=device,
+                vad_threshold=vad_threshold,
+            )
 
     print("[5/7] Running diarization...")
     result = model.predict(sample)
