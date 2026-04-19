@@ -101,6 +101,9 @@ class BaselineDiarizer:
         windows, times = self._make_windows(audio)
         print(f"[Diarizer] Total windows: {len(windows)}")
 
+        print("[Diarizer] Filtering silence...")
+        windows, times = self._filter_silence(windows, times)
+
         if len(windows) == 0:
             print("[Diarizer] No windows found.")
             return DiarizationResult(recording_id=recording_id, segments=[])
@@ -319,3 +322,15 @@ class BaselineDiarizer:
             return len(sample.speakers)
 
         return None
+
+    def _filter_silence(self, windows, times, threshold=0.01):
+        kept_windows = []
+        kept_times = []
+
+        for w, t in zip(windows, times):
+            energy = np.mean(w ** 2)
+            if energy > threshold:
+                kept_windows.append(w)
+                kept_times.append(t)
+
+        return kept_windows, kept_times
