@@ -66,7 +66,7 @@ class BaselineDiarizer:
         self.use_embedding_cache = use_embedding_cache
         self.vad_threshold = vad_threshold
         self.vad=SpeechBrainVAD(device=device) #EnergyVAD(threshold=vad_threshold)
-        self.min_speech_overlap = 0.50
+        self.min_speech_overlap = 0.65
 
         # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -157,6 +157,10 @@ class BaselineDiarizer:
 
         vprint("[Diarizer] Merging segments...")
         merged = self._merge_segments(times, labels)
+        merged = self._merge_close_segments(merged, max_gap=0.25)
+
+        min_seg_dur = 0.75
+        merged = [(s, e, lab) for (s, e, lab) in merged if (e - s) >= min_seg_dur]
 
         vprint("[Diarizer] Done.")
 
@@ -223,7 +227,7 @@ class BaselineDiarizer:
                     f"[Embeddings] {i}/{total} "
                     f"({progress * 100:.1f}%) "
                     f"| Elapsed: {elapsed:.1f}s "
-                    f"| ETA: {eta:.1f}s", 0
+                    f"| ETA: {eta:.1f}s", 2
                 )
 
             wav = torch.tensor(w, dtype=torch.float32, device=self.device)
@@ -250,11 +254,14 @@ class BaselineDiarizer:
     ) -> np.ndarray:
         from sklearn.cluster import KMeans
 
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings = embeddings / np.clip(norms, 1e-12, None)
         km = KMeans(
             n_clusters=n_speakers,
             random_state=self.random_state,
             n_init=20,
         )
+
         return km.fit_predict(embeddings)
 
     def _smooth_labels(self, labels: np.ndarray, kernel_size: int) -> np.ndarray:
@@ -298,6 +305,22 @@ class BaselineDiarizer:
 
         segments.append((cur_start, cur_end, cur_label))
         return segments
+
+    def _merge_close_segments(self, segments, max_gap=0.25):
+        if not segments:
+            return []
+
+        merged = [segments[0]]
+
+        for s, e, lab in segments[1:]:
+            prev_s, prev_e, prev_lab = merged[-1]
+
+            if lab == prev_lab and (s - prev_e) <= max_gap:
+                merged[-1] = (prev_s, e, lab)
+            else:
+                merged.append((s, e, lab))
+
+        return merged
 
     def _get_cache_path(self, recording_id: str) -> Path:
         safe_id = recording_id.replace("/", "_").replace("\\", "_")

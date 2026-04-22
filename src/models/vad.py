@@ -57,7 +57,8 @@ class EnergyVAD(BaseVAD):
                 kept_times.append(t)
 
         vprint(f"[VAD:Energy] Threshold: {self.threshold}")
-        vprint(f"[VAD:Energy] Kept {len(kept_windows)} / {len(windows)} windows")
+        pct = 100.0 * len(kept_windows) / len(windows) if windows else 0.0
+        vprint(f"[VAD:Energy] Kept {len(kept_windows)} / {len(windows)} windows ({pct:.1f}%)")
         return kept_windows, kept_times
 
 
@@ -134,5 +135,7 @@ class SpeechBrainVAD(BaseVAD):
                 kept_times.append((win_start, win_end))
 
         vprint(f"[VAD] min_speech_overlap: {min_speech_overlap}")
-        vprint(f"[VAD] Kept {len(kept_windows)} / {len(windows)} windows")
+        pct = 100.0 * len(kept_windows) / len(windows) if windows else 0.0
+        vprint(f"[VAD:SpeechBrain] Kept {len(kept_windows)} / {len(windows)} windows ({pct:.1f}%)")
+
         return kept_windows, kept_times
