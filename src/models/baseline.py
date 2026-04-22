@@ -9,7 +9,8 @@ import torch
 from scipy.signal import medfilt
 from speechbrain.inference.classifiers import EncoderClassifier
 from speechbrain.utils.fetching import LocalStrategy
-
+from models.vad import EnergyVAD
+from models.vad import SpeechBrainVAD
 
 @dataclass
 class DiarizationSegment:
@@ -62,6 +63,8 @@ class BaselineDiarizer:
         self.cache_dir = Path(cache_dir)
         self.use_embedding_cache = use_embedding_cache
         self.vad_threshold = vad_threshold
+        self.vad=SpeechBrainVAD(device=device) #EnergyVAD(threshold=vad_threshold)
+        self.min_speech_overlap = 0.55
 
         # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +107,14 @@ class BaselineDiarizer:
         print(f"[Diarizer] Total windows: {len(windows)}")
 
         print("[Diarizer] Filtering silence...")
-        windows, times = self._filter_silence(windows, times)
+        print(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
+        windows, times = self.vad.filter_windows(
+            windows,
+            times,
+            audio,
+            self.target_sr,
+            min_speech_overlap=self.min_speech_overlap
+        )
 
         if len(windows) == 0:
             print("[Diarizer] No windows found.")
@@ -290,13 +300,15 @@ class BaselineDiarizer:
     def _get_cache_path(self, recording_id: str) -> Path:
         safe_id = recording_id.replace("/", "_").replace("\\", "_")
         vad_str = str(self.vad_threshold).replace(".", "p")
+        overlap_str = str(self.min_speech_overlap).replace(".", "p")
 
         return self.cache_dir / (
             f"{safe_id}"
             f"_sr{self.target_sr}"
             f"_w{self.window_sec:g}"
             f"_h{self.hop_sec:g}"
-            f"_vad{vad_str}.npz"
+            f"_vad{vad_str}"
+            f"_ov{overlap_str}.npz"
         )
 
     @staticmethod
@@ -326,17 +338,3 @@ class BaselineDiarizer:
             return len(sample.speakers)
 
         return None
-
-    def _filter_silence(self, windows, times):
-        kept_windows = []
-        kept_times = []
-
-        for w, t in zip(windows, times):
-            energy = np.mean(w ** 2)
-            if energy > self.vad_threshold:
-                kept_windows.append(w)
-                kept_times.append(t)
-
-        print(f"[VAD] Threshold: {self.vad_threshold}")
-        print(f"[VAD] Kept {len(kept_windows)} / {len(windows)} windows")                
-        return kept_windows, kept_times

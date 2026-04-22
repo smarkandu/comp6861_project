@@ -1,7 +1,5 @@
 from pathlib import Path
-
 import torch
-
 from datasets.ami import AMIDataset
 from eval.evaluation import (
     apply_mapping_to_frame_sets,
@@ -11,6 +9,7 @@ from eval.evaluation import (
     segments_to_frame_sets,
 )
 from models.baseline import BaselineDiarizer
+from models.vad import SpeechBrainVAD
 
 
 def save_segments(result, output_dir: Path) -> Path:
@@ -85,7 +84,7 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
                 hop_sec=hop_sec,
                 smoothing_kernel=3,
                 device=device,
-                vad_threshold=vad_threshold,
+                vad_threshold=vad_threshold
             )
 
     print("[5/7] Running diarization...")
