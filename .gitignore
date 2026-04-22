@@ -6,3 +6,7 @@ pretrained_ecapa/
 *.pyc
 *.txt
 *.npz
+.idea/
+comp6861_env_wsl/
+*.ckpt
+*.sh
