@@ -223,7 +223,7 @@ class BaselineDiarizer:
                     f"[Embeddings] {i}/{total} "
                     f"({progress * 100:.1f}%) "
                     f"| Elapsed: {elapsed:.1f}s "
-                    f"| ETA: {eta:.1f}s"
+                    f"| ETA: {eta:.1f}s", 0
                 )
 
             wav = torch.tensor(w, dtype=torch.float32, device=self.device)
