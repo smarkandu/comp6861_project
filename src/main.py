@@ -62,14 +62,14 @@ def main():
     parser.add_argument(
     "--window-sec",
     type=float,
-    default=1.5,
+    default=1,
     help="Sliding window length in seconds (default: 1.5)"
     )
 
     parser.add_argument(
         "--hop-sec",
         type=float,
-        default=0.75,
+        default=0.5,
         help="Sliding window hop in seconds (default: 0.75)"
     )    
 
