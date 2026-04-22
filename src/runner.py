@@ -9,7 +9,7 @@ from eval.evaluation import (
     segments_to_frame_sets,
 )
 from models.baseline import BaselineDiarizer
-from models.vad import SpeechBrainVAD
+from debug import vprint
 
 
 def save_segments(result, output_dir: Path) -> Path:
@@ -31,85 +31,85 @@ def print_metrics(metrics: dict) -> None:
     """
     Pretty-print the evaluation metrics so the final output is easy to read.
     """
-    print("\n=== Evaluation Results ===")
+    vprint("\n=== Evaluation Results ===")
     for key, value in metrics.items():
         if isinstance(value, float):
-            print(f"{key}: {value:.4f}")
+            vprint(f"{key}: {value:.4f}")
         else:
-            print(f"{key}: {value}")
+            vprint(f"{key}: {value}")
 
 
 def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec):
-    print("\n=== Run Configuration ===")
-    print(f"audio_dir:      {audio_dir}")
-    print(f"annotation_dir: {annotation_dir}")
-    print(f"recording_id:   {recording_id}")
-    print(f"debug:          {debug}")
-    print(f"vad_threshold:  {vad_threshold}")
-    print(f"window_sec:     {window_sec}")
-    print(f"hop_sec:        {hop_sec}")
+    vprint("\n=== Run Configuration ===")
+    vprint(f"audio_dir:      {audio_dir}")
+    vprint(f"annotation_dir: {annotation_dir}")
+    vprint(f"recording_id:   {recording_id}")
+    vprint(f"debug:          {debug}")
+    vprint(f"vad_threshold:  {vad_threshold}")
+    vprint(f"window_sec:     {window_sec}")
+    vprint(f"hop_sec:        {hop_sec}")
 
-    print("=== Starting Diarization Pipeline ===")
+    vprint("=== Starting Diarization Pipeline ===")
 
-    print("\n[1/7] Loading dataset...")
+    vprint("\n[1/7] Loading dataset...")
     dataset = AMIDataset(
         audio_dir,
         annotation_dir,
         target_sr=16000,
     )
 
-    print("[2/5] Selecting recording...")
+    vprint("[2/5] Selecting recording...")
     if recording_id is None:
         recordings = dataset.list_recordings()
         if not recordings:
             raise ValueError("No recordings found in the audio directory.")
         recording_id = recordings[0]
-        print(f"No recording_id provided. Using default: {recording_id}")
+        vprint(f"No recording_id provided. Using default: {recording_id}")
     else:
-        print(f"Using provided recording_id: {recording_id}")
+        vprint(f"Using provided recording_id: {recording_id}")
 
-    print("[3/7] Loading sample (audio + annotations)...")
+    vprint("[3/7] Loading sample (audio + annotations)...")
     sample = dataset.load_sample(recording_id)
-    print(f"Recording ID: {sample.recording_id}")
-    print(f"Audio duration: {sample.duration:.2f}s")
-    print(f"Number of speakers: {sample.num_speakers}")
-    print(f"Speaker IDs: {sample.speakers}")
-    print(f"Number of reference events: {len(sample.events)}")
+    vprint(f"Recording ID: {sample.recording_id}")
+    vprint(f"Audio duration: {sample.duration:.2f}s")
+    vprint(f"Number of speakers: {sample.num_speakers}")
+    vprint(f"Speaker IDs: {sample.speakers}")
+    vprint(f"Number of reference events: {len(sample.events)}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[4/7] Initializing model on {device}...")
+    vprint(f"[4/7] Initializing model on {device}...")
     model = BaselineDiarizer(
                 target_sr=16000,
                 window_sec=window_sec,
                 hop_sec=hop_sec,
-                smoothing_kernel=3,
+                smoothing_kernel=1,
                 device=device,
                 vad_threshold=vad_threshold
             )
 
-    print("[5/7] Running diarization...")
+    vprint("[5/7] Running diarization...")
     result = model.predict(sample)
 
-    print("\n=== Diarization Complete ===")
-    print(f"Predicted segments: {len(result.segments)}")
-    print("Showing first 20 predicted segments:")
+    vprint("\n=== Diarization Complete ===")
+    vprint(f"Predicted segments: {len(result.segments)}")
+    vprint("Showing first 20 predicted segments:")
     for seg in result.segments[:20]:
-        print(seg)
+        vprint(seg)
     if len(result.segments) > 20:
-        print(f"... ({len(result.segments) - 20} more segments not shown)")
+        vprint(f"... ({len(result.segments) - 20} more segments not shown)")
 
-    print("[6/7] Saving predictions...")
+    vprint("[6/7] Saving predictions...")
     output_dir = f"{project_root}/outputs"
     output_dir = Path(output_dir)
     pred_file = save_segments(result, output_dir)
-    print(f"Saved predictions to: {pred_file}")
+    vprint(f"Saved predictions to: {pred_file}")
 
-    print("[7/7] Evaluating DER...")
+    vprint("[7/7] Evaluating DER...")
     ref_frames = events_to_frame_sets(sample.events, sample.duration, frame_hop=0.01)
     hyp_frames = segments_to_frame_sets(result.segments, sample.duration, frame_hop=0.01)
 
     mapping = map_clusters_to_speakers(ref_frames, hyp_frames, ignore_overlap=True)
-    print(f"Cluster mapping: {mapping}")
+    vprint(f"Cluster mapping: {mapping}")
 
     hyp_frames_mapped = apply_mapping_to_frame_sets(hyp_frames, mapping)
     metrics = compute_der(ref_frames, hyp_frames_mapped, ignore_overlap=True)

@@ -11,6 +11,8 @@ from speechbrain.inference.classifiers import EncoderClassifier
 from speechbrain.utils.fetching import LocalStrategy
 from models.vad import EnergyVAD
 from models.vad import SpeechBrainVAD
+from debug import vprint
+
 
 @dataclass
 class DiarizationSegment:
@@ -64,7 +66,7 @@ class BaselineDiarizer:
         self.use_embedding_cache = use_embedding_cache
         self.vad_threshold = vad_threshold
         self.vad=SpeechBrainVAD(device=device) #EnergyVAD(threshold=vad_threshold)
-        self.min_speech_overlap = 0.55
+        self.min_speech_overlap = 0.50
 
         # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -99,15 +101,15 @@ class BaselineDiarizer:
                 "Provide sample['n_speakers'] or sample['selected_speakers']."
             )
 
-        print("[Diarizer] Preparing audio...")
+        vprint("[Diarizer] Preparing audio...")
         audio = self._prepare_audio(audio, sr)
 
-        print("[Diarizer] Creating sliding windows...")
+        vprint("[Diarizer] Creating sliding windows...")
         windows, times = self._make_windows(audio)
-        print(f"[Diarizer] Total windows: {len(windows)}")
+        vprint(f"[Diarizer] Total windows: {len(windows)}")
 
-        print("[Diarizer] Filtering silence...")
-        print(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
+        vprint("[Diarizer] Filtering silence...")
+        vprint(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
         windows, times = self.vad.filter_windows(
             windows,
             times,
@@ -117,7 +119,7 @@ class BaselineDiarizer:
         )
 
         if len(windows) == 0:
-            print("[Diarizer] No windows found.")
+            vprint("[Diarizer] No windows found.")
             return DiarizationResult(recording_id=recording_id, segments=[])
 
         # Load cached embeddings when available so that repeated experiments do not
@@ -126,7 +128,7 @@ class BaselineDiarizer:
         cache_path = self._get_cache_path(recording_id)
 
         if self.use_embedding_cache and cache_path.exists():
-            print(f"[Cache] Loading embeddings from {cache_path}")
+            vprint(f"[Cache] Loading embeddings from {cache_path}")
             cache = np.load(cache_path, allow_pickle=False)
             embeddings = cache["embeddings"]
             cached_times = cache["times"]
@@ -136,27 +138,27 @@ class BaselineDiarizer:
             times = [tuple(row) for row in cached_times.tolist()]
 
         if embeddings is None:
-            print("[Diarizer] Extracting embeddings...")
+            vprint("[Diarizer] Extracting embeddings...")
             embeddings = self._extract_embeddings(windows)
 
             if self.use_embedding_cache:
-                print(f"[Cache] Saving embeddings to {cache_path}")
+                vprint(f"[Cache] Saving embeddings to {cache_path}")
                 np.savez_compressed(
                     cache_path,
                     embeddings=embeddings,
                     times=np.asarray(times, dtype=np.float32),
                 )
 
-        print("[Diarizer] Clustering embeddings...")
+        vprint("[Diarizer] Clustering embeddings...")
         labels = self._cluster_embeddings(embeddings, n_speakers)
 
-        print("[Diarizer] Smoothing labels...")
+        vprint("[Diarizer] Smoothing labels...")
         labels = self._smooth_labels(labels, self.smoothing_kernel)
 
-        print("[Diarizer] Merging segments...")
+        vprint("[Diarizer] Merging segments...")
         merged = self._merge_segments(times, labels)
 
-        print("[Diarizer] Done.")
+        vprint("[Diarizer] Done.")
 
         segments = [
             DiarizationSegment(start=s, end=e, speaker=f"cluster_{lab}")
@@ -206,9 +208,9 @@ class BaselineDiarizer:
         total = len(windows)
         start_time = time.time()
 
-        print(f"[Embeddings] Starting extraction...")
-        print(f"[Embeddings] Total windows: {total}")
-        print(f"[Embeddings] Device: {self.device}")
+        vprint(f"[Embeddings] Starting extraction...")
+        vprint(f"[Embeddings] Total windows: {total}")
+        vprint(f"[Embeddings] Device: {self.device}")
 
         for i, w in enumerate(windows):
             # Progress print so long recordings do not appear stuck.
@@ -217,7 +219,7 @@ class BaselineDiarizer:
                 progress = i / total
                 eta = elapsed * (1 - progress) / progress if progress > 0 else 0
 
-                print(
+                vprint(
                     f"[Embeddings] {i}/{total} "
                     f"({progress * 100:.1f}%) "
                     f"| Elapsed: {elapsed:.1f}s "
@@ -236,8 +238,8 @@ class BaselineDiarizer:
 
         embeddings = np.vstack(embs)
 
-        print("[Embeddings] Finished.")
-        print(f"[Embeddings] Shape: {embeddings.shape}")
+        vprint("[Embeddings] Finished.")
+        vprint(f"[Embeddings] Shape: {embeddings.shape}")
 
         return embeddings
 

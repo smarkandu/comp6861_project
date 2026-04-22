@@ -6,6 +6,8 @@ from typing import List, Sequence, Tuple
 import numpy as np
 import tempfile
 import soundfile as sf
+from debug import vprint
+
 
 TimeSpan = Tuple[float, float]
 
@@ -54,8 +56,8 @@ class EnergyVAD(BaseVAD):
                 kept_windows.append(w)
                 kept_times.append(t)
 
-        print(f"[VAD:Energy] Threshold: {self.threshold}")
-        print(f"[VAD:Energy] Kept {len(kept_windows)} / {len(windows)} windows")
+        vprint(f"[VAD:Energy] Threshold: {self.threshold}")
+        vprint(f"[VAD:Energy] Kept {len(kept_windows)} / {len(windows)} windows")
         return kept_windows, kept_times
 
 
@@ -107,7 +109,7 @@ class SpeechBrainVAD(BaseVAD):
         speech_regions = self.get_speech_regions(audio, sr)
 
         if not speech_regions:
-            print("[VAD] No speech regions detected.")
+            vprint("[VAD] No speech regions detected.")
             return [], []
 
         kept_windows: List[np.ndarray] = []
@@ -131,6 +133,6 @@ class SpeechBrainVAD(BaseVAD):
                 kept_windows.append(w)
                 kept_times.append((win_start, win_end))
 
-        print(f"[VAD] min_speech_overlap: {min_speech_overlap}")
-        print(f"[VAD] Kept {len(kept_windows)} / {len(windows)} windows")
+        vprint(f"[VAD] min_speech_overlap: {min_speech_overlap}")
+        vprint(f"[VAD] Kept {len(kept_windows)} / {len(windows)} windows")
         return kept_windows, kept_times
