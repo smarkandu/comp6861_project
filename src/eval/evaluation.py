@@ -155,42 +155,41 @@ def apply_mapping_to_frame_sets(hyp_frames, mapping):
         out.append(mapped)
     return out
 
+def build_collar_mask(events, duration, frame_hop=0.01, collar=0.25):
+    """
+    Return a boolean mask where True means 'ignore this frame for scoring'
+    because it falls within the forgiveness collar around a reference boundary.
+    """
+    n_frames = int(np.ceil(duration / frame_hop))
+    mask = np.zeros(n_frames, dtype=bool)
+
+    boundaries = set()
+    for ev in events:
+        boundaries.add(float(ev["start"]))
+        boundaries.add(float(ev["end"]))
+
+    for t in boundaries:
+        start_idx = int(np.floor(max(0.0, t - collar) / frame_hop))
+        end_idx = int(np.ceil(min(duration, t + collar) / frame_hop))
+        mask[start_idx:end_idx] = True
+
+    return mask
 
 # --------------------------------------------------
 # 4. DER Computation (Overlap-Ready)
 # --------------------------------------------------
 
-def compute_der(ref_frames, hyp_frames, ignore_overlap=True):
-    """
-    Compute Diarization Error Rate (DER).
-
-    Based on [4]:
-        MISS = max(0, R - H)
-        FA   = max(0, H - R)
-        CONF = min(R, H) - C
-
-    Where:
-        R = number of reference speakers
-        H = number of hypothesis speakers
-        C = correctly matched speakers
-
-    Parameters:
-        ignore_overlap:
-            True  → baseline evaluation
-            False → full overlap-aware DER
-
-    Returns:
-        dict with DER and components
-    """
+def compute_der(ref_frames, hyp_frames, ignore_overlap=True, collar_mask=None):
     miss = 0
     false_alarm = 0
     confusion = 0
     ref_total = 0
     scored_frames = 0
 
-    for ref_set, hyp_set in zip(ref_frames, hyp_frames):
+    for i, (ref_set, hyp_set) in enumerate(zip(ref_frames, hyp_frames)):
+        if collar_mask is not None and collar_mask[i]:
+            continue
 
-        # Skip overlap frames for baseline (Option A)
         if ignore_overlap and len(ref_set) > 1:
             continue
 
@@ -200,10 +199,7 @@ def compute_der(ref_frames, hyp_frames, ignore_overlap=True):
         H = len(hyp_set)
         C = len(ref_set.intersection(hyp_set))
 
-        # Total reference speaker time
         ref_total += R
-
-        # DER components
         miss += max(0, R - H)
         false_alarm += max(0, H - R)
         confusion += min(R, H) - C

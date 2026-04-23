@@ -3,6 +3,7 @@ import torch
 from datasets.ami import AMIDataset
 from eval.evaluation import (
     apply_mapping_to_frame_sets,
+    build_collar_mask,
     compute_der,
     events_to_frame_sets,
     map_clusters_to_speakers,
@@ -127,6 +128,17 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint(f"Cluster mapping: {mapping}")
 
     hyp_frames_mapped = apply_mapping_to_frame_sets(hyp_frames, mapping)
-    metrics = compute_der(ref_frames, hyp_frames_mapped, ignore_overlap=True)
+    collar_mask = build_collar_mask(
+        sample.events,
+        sample.duration,
+        frame_hop=0.01,
+        collar=0.25,
+    )
+    metrics = compute_der(
+        ref_frames,
+        hyp_frames_mapped,
+        ignore_overlap=True,
+        collar_mask=collar_mask,
+    )
     print_metrics(metrics)
 
