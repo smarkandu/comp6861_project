@@ -104,20 +104,25 @@ class BaselineDiarizer:
         vprint("[Diarizer] Preparing audio...")
         audio = self._prepare_audio(audio, sr)
 
-        vprint("[Diarizer] Creating sliding windows...")
-        windows, times = self._make_windows(audio)
-        vprint(f"[Diarizer] Total windows: {len(windows)}")
-
-        vprint("[Diarizer] Filtering silence...")
-        vprint(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
+        # vprint("[Diarizer] Creating sliding windows...")
+        # windows, times = self._make_windows(audio)
+        # vprint(f"[Diarizer] Total windows: {len(windows)}")
+        #
+        # vprint("[Diarizer] Filtering silence...")
+        # vprint(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
         events = self._get_field(sample, "events")
 
-        windows, times = self.vad._filter_windows_with_oracle(
-            windows,
-            times,
-            events,
-            min_speech_overlap=self.min_speech_overlap
-        )
+        # windows, times = self.vad._filter_windows_with_oracle(
+        #     windows,
+        #     times,
+        #     events,
+        #     min_speech_overlap=self.min_speech_overlap
+        # )
+
+        events = self._get_field(sample, "events")
+        vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
+        windows, times = self._make_windows_from_events(audio, events)
+        vprint(f"[Diarizer] Total windows: {len(windows)}")
 
         if len(windows) == 0:
             vprint("[Diarizer] No windows found.")
@@ -188,9 +193,27 @@ class BaselineDiarizer:
 
         return audio.astype(np.float32)
 
-    def _make_windows(
-        self,
-        audio: np.ndarray,
+    # def _make_windows(
+    #     self,
+    #     audio: np.ndarray,
+    # ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
+    #     win = int(self.window_sec * self.target_sr)
+    #     hop = int(self.hop_sec * self.target_sr)
+    #
+    #     windows: List[np.ndarray] = []
+    #     times: List[Tuple[float, float]] = []
+    #
+    #     for start in range(0, len(audio) - win + 1, hop):
+    #         end = start + win
+    #         windows.append(audio[start:end])
+    #         times.append((start / self.target_sr, end / self.target_sr))
+    #
+    #     return windows, times
+
+    def _make_windows_from_events(
+            self,
+            audio: np.ndarray,
+            events,
     ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
         win = int(self.window_sec * self.target_sr)
         hop = int(self.hop_sec * self.target_sr)
@@ -198,10 +221,27 @@ class BaselineDiarizer:
         windows: List[np.ndarray] = []
         times: List[Tuple[float, float]] = []
 
-        for start in range(0, len(audio) - win + 1, hop):
-            end = start + win
-            windows.append(audio[start:end])
-            times.append((start / self.target_sr, end / self.target_sr))
+        for ev in events:
+            start_sec = float(ev["start"])
+            end_sec = float(ev["end"])
+
+            start_idx = int(start_sec * self.target_sr)
+            end_idx = int(end_sec * self.target_sr)
+
+            seg_len = end_idx - start_idx
+            if seg_len <= 0:
+                continue
+
+            # If the speech segment is shorter than one window, skip it for now.
+            # This matches your current fixed-window design and keeps the change simple.
+            if seg_len < win:
+                continue
+
+            for local_start in range(0, seg_len - win + 1, hop):
+                s = start_idx + local_start
+                e = s + win
+                windows.append(audio[s:e])
+                times.append((s / self.target_sr, e / self.target_sr))
 
         return windows, times
 
