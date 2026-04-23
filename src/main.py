@@ -30,7 +30,6 @@ def main():
         help="Disable debug outputs"
     )
 
-    # Other args (keep simple)
     parser.add_argument(
         "--recording-id",
         type=str,
@@ -56,29 +55,34 @@ def main():
         "--vad-threshold",
         type=float,
         default=8e-5,
-        help="Energy threshold for silence filtering (default: 1e-4)"
+        help="Energy threshold for silence filtering (default: 8e-5)"
     )
 
     parser.add_argument(
-    "--window-sec",
-    type=float,
-    default=3,
-    help="Sliding window length in seconds (default: 1.5)"
+        "--window-sec",
+        type=float,
+        default=3,
+        help="Sliding window length in seconds (default: 3)"
     )
 
     parser.add_argument(
         "--hop-sec",
         type=float,
         default=1.5,
-        help="Sliding window hop in seconds (default: 0.75)"
+        help="Sliding window hop in seconds (default: 1.5)"
     )
 
     parser.add_argument(
         "--model-type",
         type=str,
-        default="baseline",
-        choices=["baseline", "advanced"],
-        help="Which diarization model to use"
+        default="ecapa",
+        choices=["baseline", "ecapa", "wavlm", "advanced"],
+        help=(
+            "Which diarization architecture to use. "
+            "'baseline' is a legacy alias for 'ecapa'. "
+            "'wavlm' uses WavLM embeddings. "
+            "'advanced' keeps the old spectral-clustering AdvancedDiarizer path."
+        )
     )
 
     args = parser.parse_args()
@@ -92,7 +96,7 @@ def main():
         vad_threshold=args.vad_threshold,
         window_sec=args.window_sec,
         hop_sec=args.hop_sec,
-        model_type=args.model_type
+        model_type=args.model_type,
     )
 
 

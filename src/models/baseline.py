@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Any, List, Sequence, Tuple
 
 import numpy as np
-import torch
 from scipy.signal import medfilt
-from speechbrain.inference.classifiers import EncoderClassifier
-from speechbrain.utils.fetching import LocalStrategy
+
 from models.vad import EnergyVAD
 from models.vad import SpeechBrainVAD
 from debug import vprint
 from models.clustering import KMeansClustering
+from models.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
+
 
 @dataclass
 class DiarizationSegment:
@@ -32,13 +32,17 @@ class DiarizationResult:
 
 class BaselineDiarizer:
     """
-    Baseline diarization pipeline:
-        audio -> sliding windows -> ECAPA embeddings -> KMeans -> smoothing -> merged segments
+    Generic diarization pipeline:
+        audio -> oracle speech windows -> speaker embeddings -> KMeans -> smoothing -> merged segments
+
+    model_type now controls which embedder is plugged in:
+        - ECAPAEmbedder for baseline/ecapa
+        - WavLMEmbedder for wavlm
 
     Embedding cache behavior:
-        - On the first run for a given recording/configuration, embeddings are computed and
+        - On the first run for a given recording/configuration/backend, embeddings are computed and
           saved to disk.
-        - On later runs with the same configuration, embeddings are loaded from disk instead
+        - On later runs with the same configuration/backend, embeddings are loaded from disk instead
           of being recomputed.
     """
 
@@ -49,12 +53,11 @@ class BaselineDiarizer:
         hop_sec: float = 1,
         smoothing_kernel: int = 3,
         device: str = "cpu",
-        ecapa_source: str = "speechbrain/spkrec-ecapa-voxceleb",
-        ecapa_savedir: str = "pretrained_ecapa",
         random_state: int = 42,
         cache_dir: str | Path = "./outputs/cache",
         use_embedding_cache: bool = True,
-        vad_threshold = 1e-4,
+        vad_threshold=1e-4,
+        embedder: BaseSpeakerEmbedder | None = None,
     ) -> None:
         self.target_sr = target_sr
         self.window_sec = window_sec
@@ -65,17 +68,16 @@ class BaselineDiarizer:
         self.cache_dir = Path(cache_dir)
         self.use_embedding_cache = use_embedding_cache
         self.vad_threshold = vad_threshold
-        self.vad=SpeechBrainVAD(device=device) #EnergyVAD(threshold=vad_threshold)
+
+        # Default keeps old behavior if caller does not pass an embedder.
+        self.embedder = embedder if embedder is not None else ECAPAEmbedder(device=device)
+        self.embedding_backend = getattr(self.embedder, "name", self.embedder.__class__.__name__.lower())
+
+        self.vad = SpeechBrainVAD(device=device)  # EnergyVAD(threshold=vad_threshold)
         self.min_speech_overlap = 0.65
 
         # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-        self.classifier = EncoderClassifier.from_hparams(
-            source=ecapa_source,
-            savedir=ecapa_savedir,
-            local_strategy=LocalStrategy.COPY,
-        )
 
     def predict(self, sample: Any) -> DiarizationResult:
         """
@@ -104,21 +106,6 @@ class BaselineDiarizer:
         vprint("[Diarizer] Preparing audio...")
         audio = self._prepare_audio(audio, sr)
 
-        # vprint("[Diarizer] Creating sliding windows...")
-        # windows, times = self._make_windows(audio)
-        # vprint(f"[Diarizer] Total windows: {len(windows)}")
-        #
-        # vprint("[Diarizer] Filtering silence...")
-        # vprint(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
-        events = self._get_field(sample, "events")
-
-        # windows, times = self.vad._filter_windows_with_oracle(
-        #     windows,
-        #     times,
-        #     events,
-        #     min_speech_overlap=self.min_speech_overlap
-        # )
-
         events = self._get_field(sample, "events")
         vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
         windows, times = self._make_windows_from_events(audio, events)
@@ -134,7 +121,7 @@ class BaselineDiarizer:
         cache_path = self._get_cache_path(recording_id)
 
         if self.use_embedding_cache and cache_path.exists():
-            vprint(f"[Cache] Loading embeddings from {cache_path}")
+            vprint(f"[Cache] Loading {self.embedding_backend} embeddings from {cache_path}")
             cache = np.load(cache_path, allow_pickle=False)
             embeddings = cache["embeddings"]
             cached_times = cache["times"]
@@ -144,7 +131,7 @@ class BaselineDiarizer:
             times = [tuple(row) for row in cached_times.tolist()]
 
         if embeddings is None:
-            vprint("[Diarizer] Extracting embeddings...")
+            vprint(f"[Diarizer] Extracting {self.embedding_backend} embeddings...")
             embeddings = self._extract_embeddings(windows)
 
             if self.use_embedding_cache:
@@ -193,27 +180,10 @@ class BaselineDiarizer:
 
         return audio.astype(np.float32)
 
-    # def _make_windows(
-    #     self,
-    #     audio: np.ndarray,
-    # ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
-    #     win = int(self.window_sec * self.target_sr)
-    #     hop = int(self.hop_sec * self.target_sr)
-    #
-    #     windows: List[np.ndarray] = []
-    #     times: List[Tuple[float, float]] = []
-    #
-    #     for start in range(0, len(audio) - win + 1, hop):
-    #         end = start + win
-    #         windows.append(audio[start:end])
-    #         times.append((start / self.target_sr, end / self.target_sr))
-    #
-    #     return windows, times
-
     def _make_windows_from_events(
-            self,
-            audio: np.ndarray,
-            events,
+        self,
+        audio: np.ndarray,
+        events,
     ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
         win = int(self.window_sec * self.target_sr)
         hop = int(self.hop_sec * self.target_sr)
@@ -247,13 +217,13 @@ class BaselineDiarizer:
 
     def _extract_embeddings(self, windows: Sequence[np.ndarray]) -> np.ndarray:
         import time
-        from sklearn.cluster import KMeans  # retained from the current baseline structure
 
         embs = []
         total = len(windows)
         start_time = time.time()
 
-        vprint(f"[Embeddings] Starting extraction...")
+        vprint("[Embeddings] Starting extraction...")
+        vprint(f"[Embeddings] Backend: {self.embedding_backend}")
         vprint(f"[Embeddings] Total windows: {total}")
         vprint(f"[Embeddings] Device: {self.device}")
 
@@ -271,17 +241,10 @@ class BaselineDiarizer:
                     f"| ETA: {eta:.1f}s", 2
                 )
 
-            wav = torch.tensor(w, dtype=torch.float32, device=self.device)
-            wav = self.classifier.audio_normalizer(wav, sample_rate=self.target_sr)
-            wav = wav.unsqueeze(0)
-
-            with torch.no_grad():
-                emb = self.classifier.encode_batch(wav)
-
-            emb = emb.squeeze().detach().cpu().numpy()
+            emb = self.embedder.encode(w, self.target_sr)
             embs.append(emb)
 
-        embeddings = np.vstack(embs)
+        embeddings = np.vstack(embs).astype(np.float32)
 
         vprint("[Embeddings] Finished.")
         vprint(f"[Embeddings] Shape: {embeddings.shape}")
@@ -293,12 +256,12 @@ class BaselineDiarizer:
         embeddings: np.ndarray,
         n_speakers: int,
     ) -> np.ndarray:
-
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         embeddings = embeddings / np.clip(norms, 1e-12, None)
+
         km = KMeansClustering(
             random_state=self.random_state,
-            n_init=20
+            n_init=20,
         )
         return km.fit_predict(embeddings, n_clusters=n_speakers)
 
@@ -364,9 +327,11 @@ class BaselineDiarizer:
         safe_id = recording_id.replace("/", "_").replace("\\", "_")
         vad_str = str(self.vad_threshold).replace(".", "p")
         overlap_str = str(self.min_speech_overlap).replace(".", "p")
+        backend_str = str(self.embedding_backend).replace("/", "_").replace("\\", "_")
 
         return self.cache_dir / (
             f"{safe_id}"
+            f"_{backend_str}"
             f"_sr{self.target_sr}"
             f"_w{self.window_sec:g}"
             f"_h{self.hop_sec:g}"

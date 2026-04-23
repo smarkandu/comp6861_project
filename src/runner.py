@@ -1,5 +1,6 @@
 from pathlib import Path
 import torch
+
 from datasets.ami import AMIDataset
 from eval.evaluation import (
     apply_mapping_to_frame_sets,
@@ -11,6 +12,7 @@ from eval.evaluation import (
 )
 from models.baseline import BaselineDiarizer
 from models.advanced import AdvancedDiarizer
+from models.embedders import ECAPAEmbedder, WavLMEmbedder
 from debug import vprint
 
 
@@ -41,6 +43,62 @@ def print_metrics(metrics: dict) -> None:
             vprint(f"{key}: {value}")
 
 
+def build_model(model_type, device, window_sec, hop_sec, vad_threshold):
+    """
+    model_type now selects the architecture/backend directly.
+
+    Recommended:
+      - ecapa: old baseline ECAPA-TDNN embedding pipeline
+      - wavlm: same diarization pipeline, but WavLM speaker embeddings
+
+    Kept for compatibility:
+      - baseline: alias for ecapa
+      - advanced: old AdvancedDiarizer + ECAPA backend
+    """
+    normalized = model_type.lower()
+
+    if normalized in {"baseline", "ecapa"}:
+        vprint("[Model] Using ECAPA-TDNN embeddings.")
+        embedder = ECAPAEmbedder(device=device)
+        return BaselineDiarizer(
+            embedder=embedder,
+            target_sr=16000,
+            window_sec=window_sec,
+            hop_sec=hop_sec,
+            smoothing_kernel=1,
+            device=device,
+            vad_threshold=vad_threshold,
+        )
+
+    if normalized == "wavlm":
+        vprint("[Model] Using WavLM embeddings.")
+        embedder = WavLMEmbedder(device=device)
+        return BaselineDiarizer(
+            embedder=embedder,
+            target_sr=16000,
+            window_sec=window_sec,
+            hop_sec=hop_sec,
+            smoothing_kernel=1,
+            device=device,
+            vad_threshold=vad_threshold,
+        )
+
+    if normalized == "advanced":
+        vprint("[Model] Using legacy AdvancedDiarizer with ECAPA embeddings.")
+        embedder = ECAPAEmbedder(device=device)
+        return AdvancedDiarizer(
+            embedder=embedder,
+            target_sr=16000,
+            window_sec=window_sec,
+            hop_sec=hop_sec,
+            smoothing_kernel=1,
+            device=device,
+            vad_threshold=vad_threshold,
+        )
+
+    raise ValueError(f"Unknown model_type: {model_type}")
+
+
 def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec, model_type):
     vprint("\n=== Run Configuration ===")
     vprint(f"audio_dir:      {audio_dir}")
@@ -61,7 +119,7 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
         target_sr=16000,
     )
 
-    vprint("[2/5] Selecting recording...")
+    vprint("[2/7] Selecting recording...")
     if recording_id is None:
         recordings = dataset.list_recordings()
         if not recordings:
@@ -78,30 +136,17 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint(f"Number of speakers: {sample.num_speakers}")
     vprint(f"Speaker IDs: {sample.speakers}")
     vprint(f"Number of reference events: {len(sample.events)}")
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     vprint(f"[4/7] Initializing model on {device}...")
-    model = None
-    if model_type == "baseline":
-        model = BaselineDiarizer(
-            target_sr=16000,
-            window_sec=window_sec,
-            hop_sec=hop_sec,
-            smoothing_kernel=1,
-            device=device,
-            vad_threshold=vad_threshold,
-        )
-    elif model_type == "advanced":
-        model = AdvancedDiarizer(
-            target_sr=16000,
-            window_sec=window_sec,
-            hop_sec=hop_sec,
-            smoothing_kernel=1,
-            device=device,
-            vad_threshold=vad_threshold,
-        )
-    else:
-        raise ValueError(f"Unknown model_type: {model_type}")
+    model = build_model(
+        model_type=model_type,
+        device=device,
+        window_sec=window_sec,
+        hop_sec=hop_sec,
+        vad_threshold=vad_threshold,
+    )
 
     vprint("[5/7] Running diarization...")
     result = model.predict(sample)
@@ -141,4 +186,3 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
         collar_mask=collar_mask,
     )
     print_metrics(metrics)
-
