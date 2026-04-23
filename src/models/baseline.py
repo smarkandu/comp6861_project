@@ -12,7 +12,7 @@ from speechbrain.utils.fetching import LocalStrategy
 from models.vad import EnergyVAD
 from models.vad import SpeechBrainVAD
 from debug import vprint
-
+from models.clustering import KMeansClustering
 
 @dataclass
 class DiarizationSegment:
@@ -252,17 +252,14 @@ class BaselineDiarizer:
         embeddings: np.ndarray,
         n_speakers: int,
     ) -> np.ndarray:
-        from sklearn.cluster import KMeans
 
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         embeddings = embeddings / np.clip(norms, 1e-12, None)
-        km = KMeans(
-            n_clusters=n_speakers,
+        km = KMeansClustering(
             random_state=self.random_state,
-            n_init=20,
+            n_init=20
         )
-
-        return km.fit_predict(embeddings)
+        return km.fit_predict(embeddings, n_clusters=n_speakers)
 
     def _smooth_labels(self, labels: np.ndarray, kernel_size: int) -> np.ndarray:
         if kernel_size <= 1:

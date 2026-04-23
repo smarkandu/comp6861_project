@@ -9,6 +9,7 @@ from eval.evaluation import (
     segments_to_frame_sets,
 )
 from models.baseline import BaselineDiarizer
+from models.advanced import AdvancedDiarizer
 from debug import vprint
 
 
@@ -39,7 +40,7 @@ def print_metrics(metrics: dict) -> None:
             vprint(f"{key}: {value}")
 
 
-def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec):
+def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec, model_type):
     vprint("\n=== Run Configuration ===")
     vprint(f"audio_dir:      {audio_dir}")
     vprint(f"annotation_dir: {annotation_dir}")
@@ -48,6 +49,7 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint(f"vad_threshold:  {vad_threshold}")
     vprint(f"window_sec:     {window_sec}")
     vprint(f"hop_sec:        {hop_sec}")
+    vprint(f"model_type:     {model_type}")
 
     vprint("=== Starting Diarization Pipeline ===")
 
@@ -75,17 +77,30 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint(f"Number of speakers: {sample.num_speakers}")
     vprint(f"Speaker IDs: {sample.speakers}")
     vprint(f"Number of reference events: {len(sample.events)}")
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
     vprint(f"[4/7] Initializing model on {device}...")
-    model = BaselineDiarizer(
-                target_sr=16000,
-                window_sec=window_sec,
-                hop_sec=hop_sec,
-                smoothing_kernel=1,
-                device=device,
-                vad_threshold=vad_threshold
-            )
+    model = None
+    if model_type == "baseline":
+        model = BaselineDiarizer(
+            target_sr=16000,
+            window_sec=window_sec,
+            hop_sec=hop_sec,
+            smoothing_kernel=1,
+            device=device,
+            vad_threshold=vad_threshold,
+        )
+    elif model_type == "advanced":
+        model = AdvancedDiarizer(
+            target_sr=16000,
+            window_sec=window_sec,
+            hop_sec=hop_sec,
+            smoothing_kernel=1,
+            device=device,
+            vad_threshold=vad_threshold,
+        )
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
 
     vprint("[5/7] Running diarization...")
     result = model.predict(sample)

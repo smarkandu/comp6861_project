@@ -71,7 +71,15 @@ def main():
         type=float,
         default=0.75,
         help="Sliding window hop in seconds (default: 0.75)"
-    )    
+    )
+
+    parser.add_argument(
+        "--model-type",
+        type=str,
+        default="baseline",
+        choices=["baseline", "advanced"],
+        help="Which diarization model to use"
+    )
 
     args = parser.parse_args()
 
@@ -83,7 +91,8 @@ def main():
         debug=args.debug,
         vad_threshold=args.vad_threshold,
         window_sec=args.window_sec,
-        hop_sec=args.hop_sec
+        hop_sec=args.hop_sec,
+        model_type=args.model_type
     )
 
 
