@@ -139,3 +139,28 @@ class SpeechBrainVAD(BaseVAD):
         vprint(f"[VAD:SpeechBrain] Kept {len(kept_windows)} / {len(windows)} windows ({pct:.1f}%)")
 
         return kept_windows, kept_times
+
+    def _filter_windows_with_oracle(self, windows, times, events, min_speech_overlap=0.0):
+        speech_regions = [(ev["start"], ev["end"]) for ev in events]
+
+        kept_windows = []
+        kept_times = []
+
+        for w, (win_start, win_end) in zip(windows, times):
+            win_dur = win_end - win_start
+            if win_dur <= 0:
+                continue
+
+            overlap = 0.0
+            for speech_start, speech_end in speech_regions:
+                start = max(win_start, speech_start)
+                end = min(win_end, speech_end)
+                if end > start:
+                    overlap += end - start
+
+            overlap_frac = overlap / win_dur
+            if overlap_frac >= min_speech_overlap:
+                kept_windows.append(w)
+                kept_times.append((win_start, win_end))
+
+        return kept_windows, kept_times

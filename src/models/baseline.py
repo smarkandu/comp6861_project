@@ -110,11 +110,12 @@ class BaselineDiarizer:
 
         vprint("[Diarizer] Filtering silence...")
         vprint(f"[Diarizer] Using overlap threshold: {self.min_speech_overlap}")
-        windows, times = self.vad.filter_windows(
+        events = self._get_field(sample, "events")
+
+        windows, times = self.vad._filter_windows_with_oracle(
             windows,
             times,
-            audio,
-            self.target_sr,
+            events,
             min_speech_overlap=self.min_speech_overlap
         )
 
