@@ -1,5 +1,6 @@
 from pathlib import Path
 import torch
+import os
 
 from datasets.ami import AMIDataset
 from eval.evaluation import (
@@ -113,8 +114,10 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint("=== Starting Diarization Pipeline ===")
 
     vprint("\n[1/7] Loading dataset...")
+    print(audio_dir, recording_id)
+    recording_path = os.path.join(str(audio_dir), recording_id, "audio")
     dataset = AMIDataset(
-        audio_dir,
+        recording_path,
         annotation_dir,
         target_sr=16000,
     )
@@ -151,19 +154,19 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint("[5/7] Running diarization...")
     result = model.predict(sample)
 
-    vprint("\n=== Diarization Complete ===")
-    vprint(f"Predicted segments: {len(result.segments)}")
-    vprint("Showing first 20 predicted segments:")
+    vprint("\n=== Diarization Complete ===", 2)
+    vprint(f"Predicted segments: {len(result.segments)}", 2)
+    vprint("Showing first 20 predicted segments:", 2)
     for seg in result.segments[:20]:
-        vprint(seg)
+        vprint(seg, 2)
     if len(result.segments) > 20:
-        vprint(f"... ({len(result.segments) - 20} more segments not shown)")
+        vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
 
-    vprint("[6/7] Saving predictions...")
+    vprint("[6/7] Saving predictions...", 2)
     output_dir = f"{project_root}/outputs"
     output_dir = Path(output_dir)
     pred_file = save_segments(result, output_dir)
-    vprint(f"Saved predictions to: {pred_file}")
+    vprint(f"Saved predictions to: {pred_file}", 2)
 
     vprint("[7/7] Evaluating DER...")
     ref_frames = events_to_frame_sets(sample.events, sample.duration, frame_hop=0.01)

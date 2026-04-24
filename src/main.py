@@ -33,14 +33,14 @@ def main():
     parser.add_argument(
         "--recording-id",
         type=str,
-        default=None,
+        default="ES2002a",
         help="Recording ID (default: first available)"
     )
 
     parser.add_argument(
         "--audio-dir",
         type=str,
-        default=f"{ROOT}/data/amicorpus/ES2002a/audio",
+        default=f"{ROOT}/data/amicorpus",
         help="Path to audio directory"
     )
 

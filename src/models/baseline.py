@@ -10,7 +10,7 @@ from scipy.signal import medfilt
 from models.vad import EnergyVAD
 from models.vad import SpeechBrainVAD
 from debug import vprint
-from models.clustering import KMeansClustering
+from models.clustering import KMeansClustering, SpectralClusteringModel
 from models.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
 
 
@@ -103,16 +103,16 @@ class BaselineDiarizer:
                 "Provide sample['n_speakers'] or sample['selected_speakers']."
             )
 
-        vprint("[Diarizer] Preparing audio...")
+        vprint("[Diarizer] Preparing audio...", 2)
         audio = self._prepare_audio(audio, sr)
 
         events = self._get_field(sample, "events")
         vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
         windows, times = self._make_windows_from_events(audio, events)
-        vprint(f"[Diarizer] Total windows: {len(windows)}")
+        vprint(f"[Diarizer] Total windows: {len(windows)}", 2)
 
         if len(windows) == 0:
-            vprint("[Diarizer] No windows found.")
+            vprint("[Diarizer] No windows found.", 2)
             return DiarizationResult(recording_id=recording_id, segments=[])
 
         # Load cached embeddings when available so that repeated experiments do not
@@ -135,7 +135,7 @@ class BaselineDiarizer:
             embeddings = self._extract_embeddings(windows)
 
             if self.use_embedding_cache:
-                vprint(f"[Cache] Saving embeddings to {cache_path}")
+                vprint(f"[Cache] Saving embeddings to {cache_path}", 2)
                 np.savez_compressed(
                     cache_path,
                     embeddings=embeddings,
@@ -259,11 +259,19 @@ class BaselineDiarizer:
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         embeddings = embeddings / np.clip(norms, 1e-12, None)
 
-        km = KMeansClustering(
+        # km = KMeansClustering(
+        #     random_state=self.random_state,
+        #     n_init=20,
+        # )
+
+        clustering = SpectralClusteringModel(
             random_state=self.random_state,
-            n_init=20,
+            affinity="nearest_neighbors",
+            n_neighbors=10,
+            assign_labels="kmeans",
         )
-        return km.fit_predict(embeddings, n_clusters=n_speakers)
+
+        return clustering.fit_predict(embeddings, n_clusters=n_speakers)
 
     def _smooth_labels(self, labels: np.ndarray, kernel_size: int) -> np.ndarray:
         if kernel_size <= 1:
