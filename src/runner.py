@@ -1,6 +1,5 @@
 from pathlib import Path
 import torch
-import os
 
 from datasets.ami import AMIDataset
 from eval.evaluation import (
@@ -44,63 +43,224 @@ def print_metrics(metrics: dict) -> None:
             vprint(f"{key}: {value}")
 
 
-def build_model(model_type, device, window_sec, hop_sec, vad_threshold):
+def resolve_recording_audio_dir(audio_dir, recording_id):
     """
-    model_type now selects the architecture/backend directly.
+    Support both layouts:
 
-    Recommended:
-      - ecapa: old baseline ECAPA-TDNN embedding pipeline
-      - wavlm: same diarization pipeline, but WavLM speaker embeddings
+    1) audio_dir = data/amicorpus/ES2002a/audio
+    2) audio_dir = data/amicorpus and recording_id = ES2002a
+       -> data/amicorpus/ES2002a/audio
+    """
+    audio_dir = Path(audio_dir)
 
-    Kept for compatibility:
-      - baseline: alias for ecapa
-      - advanced: old AdvancedDiarizer + ECAPA backend
+    if recording_id is None:
+        return audio_dir
+
+    nested_audio_dir = audio_dir / recording_id / "audio"
+    if nested_audio_dir.exists():
+        return nested_audio_dir
+
+    return audio_dir
+
+
+def build_dataset(audio_dir, annotation_dir, recording_id=None, target_sr=16000):
+    """
+    Build AMIDataset without duplicating path logic in main.py and tune.py.
+    """
+    recording_audio_dir = resolve_recording_audio_dir(audio_dir, recording_id)
+
+    return AMIDataset(
+        str(recording_audio_dir),
+        annotation_dir,
+        target_sr=target_sr,
+    )
+
+
+def select_recording(dataset, recording_id):
+    """
+    Use the provided recording_id, or choose the first available recording.
+    """
+    if recording_id is not None:
+        vprint(f"Using provided recording_id: {recording_id}")
+        return recording_id
+
+    recordings = dataset.list_recordings()
+    if not recordings:
+        raise ValueError("No recordings found in the audio directory.")
+
+    selected = recordings[0]
+    vprint(f"No recording_id provided. Using default: {selected}")
+    return selected
+
+
+def build_model(
+    model_type,
+    device,
+    window_sec,
+    hop_sec,
+    vad_threshold,
+    smoothing_kernel=1,
+    cache_dir="./outputs/cache",
+    use_embedding_cache=True,
+    clustering_method=None,
+    n_neighbors=10,
+    merge_gap=0.25,
+    min_seg_dur=0.75,
+):
+    """
+    Build one diarization model.
+
+    model_type selects the architecture/backend:
+      - baseline/ecapa -> ECAPA-TDNN
+      - wavlm -> WavLM
+      - advanced -> legacy AdvancedDiarizer with ECAPA
     """
     normalized = model_type.lower()
 
     if normalized in {"baseline", "ecapa"}:
         vprint("[Model] Using ECAPA-TDNN embeddings.")
         embedder = ECAPAEmbedder(device=device)
-        return BaselineDiarizer(
-            embedder=embedder,
-            target_sr=16000,
-            window_sec=window_sec,
-            hop_sec=hop_sec,
-            smoothing_kernel=1,
-            device=device,
-            vad_threshold=vad_threshold,
-        )
+        cls = BaselineDiarizer
 
-    if normalized == "wavlm":
+    elif normalized == "wavlm":
         vprint("[Model] Using WavLM embeddings.")
         embedder = WavLMEmbedder(device=device)
-        return BaselineDiarizer(
-            embedder=embedder,
-            target_sr=16000,
-            window_sec=window_sec,
-            hop_sec=hop_sec,
-            smoothing_kernel=1,
-            device=device,
-            vad_threshold=vad_threshold,
-        )
+        cls = BaselineDiarizer
 
-    if normalized == "advanced":
+    elif normalized == "advanced":
         vprint("[Model] Using legacy AdvancedDiarizer with ECAPA embeddings.")
         embedder = ECAPAEmbedder(device=device)
-        return AdvancedDiarizer(
-            embedder=embedder,
-            target_sr=16000,
-            window_sec=window_sec,
-            hop_sec=hop_sec,
-            smoothing_kernel=1,
-            device=device,
-            vad_threshold=vad_threshold,
-        )
+        cls = AdvancedDiarizer
 
-    raise ValueError(f"Unknown model_type: {model_type}")
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+
+    common_kwargs = dict(
+        embedder=embedder,
+        target_sr=16000,
+        window_sec=window_sec,
+        hop_sec=hop_sec,
+        smoothing_kernel=smoothing_kernel,
+        device=device,
+        vad_threshold=vad_threshold,
+        cache_dir=cache_dir,
+        use_embedding_cache=use_embedding_cache,
+    )
+
+    optional_kwargs = {
+        "clustering_method": clustering_method,
+        "n_neighbors": n_neighbors,
+        "merge_gap": merge_gap,
+        "min_seg_dur": min_seg_dur,
+    }
+    optional_kwargs = {k: v for k, v in optional_kwargs.items() if v is not None}
+
+    try:
+        return cls(**common_kwargs, **optional_kwargs)
+    except TypeError:
+        # Fallback if your current BaselineDiarizer does not accept optional args yet.
+        return cls(**common_kwargs)
 
 
-def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, vad_threshold, window_sec, hop_sec, model_type):
+def evaluate_result(
+    sample,
+    result,
+    collar=0.25,
+    ignore_overlap=True,
+    frame_hop=0.01,
+):
+    """
+    Reusable DER evaluation logic.
+    """
+    ref_frames = events_to_frame_sets(
+        sample.events,
+        sample.duration,
+        frame_hop=frame_hop,
+    )
+    hyp_frames = segments_to_frame_sets(
+        result.segments,
+        sample.duration,
+        frame_hop=frame_hop,
+    )
+
+    mapping = map_clusters_to_speakers(
+        ref_frames,
+        hyp_frames,
+        ignore_overlap=ignore_overlap,
+    )
+
+    hyp_frames_mapped = apply_mapping_to_frame_sets(hyp_frames, mapping)
+
+    collar_mask = build_collar_mask(
+        sample.events,
+        sample.duration,
+        frame_hop=frame_hop,
+        collar=collar,
+    )
+
+    metrics = compute_der(
+        ref_frames,
+        hyp_frames_mapped,
+        ignore_overlap=ignore_overlap,
+        collar_mask=collar_mask,
+    )
+
+    return metrics, mapping
+
+
+def run_single_recording(
+    dataset,
+    recording_id,
+    model,
+    collar=0.25,
+    ignore_overlap=True,
+    frame_hop=0.01,
+):
+    """
+    Run diarization and evaluation for one recording.
+
+    Returns:
+        sample, result, metrics, mapping
+    """
+    sample = dataset.load_sample(recording_id)
+
+    vprint(f"Recording ID: {sample.recording_id}")
+    vprint(f"Audio duration: {sample.duration:.2f}s")
+    vprint(f"Number of speakers: {sample.num_speakers}")
+    vprint(f"Speaker IDs: {sample.speakers}")
+    vprint(f"Number of reference events: {len(sample.events)}")
+
+    result = model.predict(sample)
+
+    metrics, mapping = evaluate_result(
+        sample=sample,
+        result=result,
+        collar=collar,
+        ignore_overlap=ignore_overlap,
+        frame_hop=frame_hop,
+    )
+
+    return sample, result, metrics, mapping
+
+
+def run_pipeline(
+    project_root,
+    audio_dir,
+    annotation_dir,
+    recording_id,
+    debug,
+    vad_threshold,
+    window_sec,
+    hop_sec,
+    model_type,
+    smoothing_kernel=1,
+    collar=0.25,
+    ignore_overlap=True,
+    clustering_method=None,
+    n_neighbors=10,
+    merge_gap=0.25,
+    min_seg_dur=0.75,
+):
     vprint("\n=== Run Configuration ===")
     vprint(f"audio_dir:      {audio_dir}")
     vprint(f"annotation_dir: {annotation_dir}")
@@ -110,49 +270,49 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     vprint(f"window_sec:     {window_sec}")
     vprint(f"hop_sec:        {hop_sec}")
     vprint(f"model_type:     {model_type}")
+    vprint(f"smoothing:      {smoothing_kernel}")
+    if clustering_method is not None:
+        vprint(f"clustering:     {clustering_method}")
 
     vprint("=== Starting Diarization Pipeline ===")
 
     vprint("\n[1/7] Loading dataset...")
-    print(audio_dir, recording_id)
-    recording_path = os.path.join(str(audio_dir), recording_id, "audio")
-    dataset = AMIDataset(
-        recording_path,
-        annotation_dir,
+    dataset = build_dataset(
+        audio_dir=audio_dir,
+        annotation_dir=annotation_dir,
+        recording_id=recording_id,
         target_sr=16000,
     )
 
     vprint("[2/7] Selecting recording...")
-    if recording_id is None:
-        recordings = dataset.list_recordings()
-        if not recordings:
-            raise ValueError("No recordings found in the audio directory.")
-        recording_id = recordings[0]
-        vprint(f"No recording_id provided. Using default: {recording_id}")
-    else:
-        vprint(f"Using provided recording_id: {recording_id}")
-
-    vprint("[3/7] Loading sample (audio + annotations)...")
-    sample = dataset.load_sample(recording_id)
-    vprint(f"Recording ID: {sample.recording_id}")
-    vprint(f"Audio duration: {sample.duration:.2f}s")
-    vprint(f"Number of speakers: {sample.num_speakers}")
-    vprint(f"Speaker IDs: {sample.speakers}")
-    vprint(f"Number of reference events: {len(sample.events)}")
+    recording_id = select_recording(dataset, recording_id)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    vprint(f"[4/7] Initializing model on {device}...")
+    vprint(f"[3/7] Initializing model on {device}...")
     model = build_model(
         model_type=model_type,
         device=device,
         window_sec=window_sec,
         hop_sec=hop_sec,
         vad_threshold=vad_threshold,
+        smoothing_kernel=smoothing_kernel,
+        cache_dir=f"{project_root}/outputs/cache",
+        use_embedding_cache=True,
+        clustering_method=clustering_method,
+        n_neighbors=n_neighbors,
+        merge_gap=merge_gap,
+        min_seg_dur=min_seg_dur,
     )
 
-    vprint("[5/7] Running diarization...")
-    result = model.predict(sample)
+    vprint("[4/7] Running diarization and evaluation...")
+    sample, result, metrics, mapping = run_single_recording(
+        dataset=dataset,
+        recording_id=recording_id,
+        model=model,
+        collar=collar,
+        ignore_overlap=ignore_overlap,
+    )
 
     vprint("\n=== Diarization Complete ===", 2)
     vprint(f"Predicted segments: {len(result.segments)}", 2)
@@ -162,30 +322,19 @@ def run_pipeline(project_root, audio_dir, annotation_dir, recording_id, debug, v
     if len(result.segments) > 20:
         vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
 
-    vprint("[6/7] Saving predictions...", 2)
-    output_dir = f"{project_root}/outputs"
-    output_dir = Path(output_dir)
+    vprint("[5/7] Saving predictions...", 2)
+    output_dir = Path(project_root) / "outputs"
     pred_file = save_segments(result, output_dir)
     vprint(f"Saved predictions to: {pred_file}", 2)
 
-    vprint("[7/7] Evaluating DER...")
-    ref_frames = events_to_frame_sets(sample.events, sample.duration, frame_hop=0.01)
-    hyp_frames = segments_to_frame_sets(result.segments, sample.duration, frame_hop=0.01)
-
-    mapping = map_clusters_to_speakers(ref_frames, hyp_frames, ignore_overlap=True)
+    vprint("[6/7] Reporting DER...")
     vprint(f"Cluster mapping: {mapping}")
-
-    hyp_frames_mapped = apply_mapping_to_frame_sets(hyp_frames, mapping)
-    collar_mask = build_collar_mask(
-        sample.events,
-        sample.duration,
-        frame_hop=0.01,
-        collar=0.25,
-    )
-    metrics = compute_der(
-        ref_frames,
-        hyp_frames_mapped,
-        ignore_overlap=True,
-        collar_mask=collar_mask,
-    )
     print_metrics(metrics)
+
+    return {
+        "sample": sample,
+        "result": result,
+        "metrics": metrics,
+        "mapping": mapping,
+        "prediction_file": pred_file,
+    }
