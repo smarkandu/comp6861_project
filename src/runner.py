@@ -13,13 +13,161 @@ from eval.evaluation import (
 from models.baseline import BaselineDiarizer
 from models.advanced import AdvancedDiarizer
 from models.embedders import ECAPAEmbedder, WavLMEmbedder
-from debug import vprint
+from models.vad import build_speech_region_selector, filter_windows_by_regions
+from debug import vprint, set_debug
+from rttm_generator import write_reference_rttm
+
+
+class DiarizationPipeline:
+    def __init__(
+        self,
+        project_root,
+        audio_dir,
+        annotation_dir,
+        recording_id,
+        debug,
+        vad_threshold,
+        window_sec,
+        hop_sec,
+        model_type,
+        smoothing_kernel=1,
+        collar=0.25,
+        ignore_overlap=True,
+        clustering_method=None,
+        n_neighbors=10,
+        merge_gap=0.25,
+        min_seg_dur=0.75,
+        cache_dir=None,
+        use_embedding_cache=True,
+        speech_source="oracle",
+        min_speech_overlap=0.5,
+    ):
+        self.project_root = project_root
+        self.audio_dir = audio_dir
+        self.annotation_dir = annotation_dir
+        self.recording_id = recording_id
+        self.debug = debug
+        self.vad_threshold = vad_threshold
+        self.window_sec = window_sec
+        self.hop_sec = hop_sec
+        self.model_type = model_type
+        self.smoothing_kernel = smoothing_kernel
+        self.collar = collar
+        self.ignore_overlap = ignore_overlap
+        self.clustering_method = clustering_method
+        self.n_neighbors = n_neighbors
+        self.merge_gap = merge_gap
+        self.min_seg_dur = min_seg_dur
+        self.cache_dir = cache_dir or f"{project_root}/outputs/cache"
+        self.use_embedding_cache = use_embedding_cache
+        self.speech_source = speech_source
+        self.min_speech_overlap = min_speech_overlap
+
+    def run(self):
+        set_debug(self.debug)
+
+        vprint("\n=== Run Configuration ===")
+        vprint(f"audio_dir:        {self.audio_dir}")
+        vprint(f"annotation_dir:   {self.annotation_dir}")
+        vprint(f"recording_id:     {self.recording_id}")
+        # vprint(f"device:           {device}")
+        vprint(f"debug:            {self.debug}")
+        vprint(f"use_cache:        {self.use_embedding_cache}")
+
+        vprint(f"\n--- Model ---")
+        vprint(f"model_type:       {self.model_type}")
+        vprint(f"window_sec:       {self.window_sec}")
+        vprint(f"hop_sec:          {self.hop_sec}")
+        vprint(f"smoothing:        {self.smoothing_kernel}")
+
+        vprint(f"\n--- Clustering ---")
+        vprint(f"method:           {self.clustering_method}")
+        vprint(f"n_neighbors:      {self.n_neighbors}")
+        vprint(f"merge_gap:        {self.merge_gap}")
+        vprint(f"min_seg_dur:      {self.min_seg_dur}")
+
+        vprint(f"\n--- Speech ---")
+        vprint(f"speech_source:    {self.speech_source}")
+        vprint(f"min_overlap:      {self.min_speech_overlap}")
+        vprint(f"vad_threshold:    {self.vad_threshold}")
+        vprint("=== Starting Diarization Pipeline ===")
+
+        vprint("\n[1/7] Loading dataset...")
+        dataset = build_dataset(
+            audio_dir=self.audio_dir,
+            annotation_dir=self.annotation_dir,
+            recording_id=self.recording_id,
+            target_sr=16000,
+        )
+
+        vprint("[2/7] Selecting recording...")
+        recording_id = select_recording(dataset, self.recording_id)
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+        vprint(f"[3/7] Initializing model on {device}...")
+        model = build_model(
+            model_type=self.model_type,
+            device=device,
+            window_sec=self.window_sec,
+            hop_sec=self.hop_sec,
+            vad_threshold=self.vad_threshold,
+            smoothing_kernel=self.smoothing_kernel,
+            cache_dir=self.cache_dir,
+            use_embedding_cache=self.use_embedding_cache,
+            clustering_method=self.clustering_method,
+            n_neighbors=self.n_neighbors,
+            merge_gap=self.merge_gap,
+            min_seg_dur=self.min_seg_dur,
+        )
+
+        speech_selector = build_speech_region_selector(
+            source=self.speech_source,
+            vad_threshold=self.vad_threshold,
+            device=device,
+        )
+
+        vprint("[4/7] Running diarization and evaluation...")
+        sample, result, metrics, mapping = run_single_recording(
+            dataset=dataset,
+            recording_id=recording_id,
+            model=model,
+            speech_selector=speech_selector,
+            speech_source=self.speech_source,
+            min_speech_overlap=self.min_speech_overlap,
+            collar=self.collar,
+            ignore_overlap=self.ignore_overlap,
+        )
+
+        vprint("\n=== Diarization Complete ===", 2)
+        vprint(f"Predicted segments: {len(result.segments)}", 2)
+        vprint("Showing first 20 predicted segments:", 2)
+
+        for seg in result.segments[:20]:
+            vprint(seg, 2)
+
+        if len(result.segments) > 20:
+            vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
+
+        vprint("[5/7] Saving predictions...")
+        output_dir = Path(self.project_root) / "outputs"
+        pred_file = save_segments(result, output_dir)
+        vprint(f"Saved predictions to: {pred_file}", 2)
+
+        vprint("[6/7] Reporting DER...")
+        vprint(f"Cluster mapping: {mapping}")
+        print_metrics(metrics)
+
+        return {
+            "sample": sample,
+            "result": result,
+            "metrics": metrics,
+            "mapping": mapping,
+            "prediction_file": pred_file,
+        }
 
 
 def save_segments(result, output_dir: Path) -> Path:
-    """
-    Save predicted diarization segments in a simple tab-separated text file.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{result.recording_id}_prediction.txt"
 
@@ -32,9 +180,6 @@ def save_segments(result, output_dir: Path) -> Path:
 
 
 def print_metrics(metrics: dict) -> None:
-    """
-    Pretty-print the evaluation metrics so the final output is easy to read.
-    """
     vprint("\n=== Evaluation Results ===")
     for key, value in metrics.items():
         if isinstance(value, float):
@@ -44,13 +189,6 @@ def print_metrics(metrics: dict) -> None:
 
 
 def resolve_recording_audio_dir(audio_dir, recording_id):
-    """
-    Support both layouts:
-
-    1) audio_dir = data/amicorpus/ES2002a/audio
-    2) audio_dir = data/amicorpus and recording_id = ES2002a
-       -> data/amicorpus/ES2002a/audio
-    """
     audio_dir = Path(audio_dir)
 
     if recording_id is None:
@@ -64,9 +202,6 @@ def resolve_recording_audio_dir(audio_dir, recording_id):
 
 
 def build_dataset(audio_dir, annotation_dir, recording_id=None, target_sr=16000):
-    """
-    Build AMIDataset without duplicating path logic in main.py and tune.py.
-    """
     recording_audio_dir = resolve_recording_audio_dir(audio_dir, recording_id)
 
     return AMIDataset(
@@ -77,19 +212,18 @@ def build_dataset(audio_dir, annotation_dir, recording_id=None, target_sr=16000)
 
 
 def select_recording(dataset, recording_id):
-    """
-    Use the provided recording_id, or choose the first available recording.
-    """
     if recording_id is not None:
         vprint(f"Using provided recording_id: {recording_id}")
         return recording_id
 
     recordings = dataset.list_recordings()
+
     if not recordings:
         raise ValueError("No recordings found in the audio directory.")
 
     selected = recordings[0]
     vprint(f"No recording_id provided. Using default: {selected}")
+
     return selected
 
 
@@ -107,14 +241,6 @@ def build_model(
     merge_gap=0.25,
     min_seg_dur=0.75,
 ):
-    """
-    Build one diarization model.
-
-    model_type selects the architecture/backend:
-      - baseline/ecapa -> ECAPA-TDNN
-      - wavlm -> WavLM
-      - advanced -> legacy AdvancedDiarizer with ECAPA
-    """
     normalized = model_type.lower()
 
     if normalized in {"baseline", "ecapa"}:
@@ -145,21 +271,13 @@ def build_model(
         vad_threshold=vad_threshold,
         cache_dir=cache_dir,
         use_embedding_cache=use_embedding_cache,
+        clustering_method=clustering_method,
+        n_neighbors=n_neighbors,
+        merge_gap=merge_gap,
+        min_seg_dur=min_seg_dur,
     )
 
-    optional_kwargs = {
-        "clustering_method": clustering_method,
-        "n_neighbors": n_neighbors,
-        "merge_gap": merge_gap,
-        "min_seg_dur": min_seg_dur,
-    }
-    optional_kwargs = {k: v for k, v in optional_kwargs.items() if v is not None}
-
-    try:
-        return cls(**common_kwargs, **optional_kwargs)
-    except TypeError:
-        # Fallback if your current BaselineDiarizer does not accept optional args yet.
-        return cls(**common_kwargs)
+    return cls(**common_kwargs)
 
 
 def evaluate_result(
@@ -169,14 +287,12 @@ def evaluate_result(
     ignore_overlap=True,
     frame_hop=0.01,
 ):
-    """
-    Reusable DER evaluation logic.
-    """
     ref_frames = events_to_frame_sets(
         sample.events,
         sample.duration,
         frame_hop=frame_hop,
     )
+
     hyp_frames = segments_to_frame_sets(
         result.segments,
         sample.duration,
@@ -212,16 +328,13 @@ def run_single_recording(
     dataset,
     recording_id,
     model,
+    speech_selector,
+    speech_source,
+    min_speech_overlap=0.5,
     collar=0.25,
     ignore_overlap=True,
     frame_hop=0.01,
 ):
-    """
-    Run diarization and evaluation for one recording.
-
-    Returns:
-        sample, result, metrics, mapping
-    """
     sample = dataset.load_sample(recording_id)
 
     vprint(f"Recording ID: {sample.recording_id}")
@@ -230,7 +343,49 @@ def run_single_recording(
     vprint(f"Speaker IDs: {sample.speakers}")
     vprint(f"Number of reference events: {len(sample.events)}")
 
-    result = model.predict(sample)
+    write_reference_rttm(
+        events=sample.events,
+        recording_id=recording_id,
+        output_path=f"outputs/rttm/{recording_id}_ref.rttm",
+    )
+
+    model.set_num_speakers(sample.num_speakers)
+
+    speech_regions = speech_selector.get_speech_regions(sample)
+    vprint(f"Number of speech regions: {len(speech_regions)}")
+
+    audio = model._prepare_audio(sample.audio, sample.sr)
+
+    source = speech_source.lower()
+
+    if source == "oracle":
+        vprint("[Speech] Creating windows from oracle speech regions.")
+        windows, times = model._make_windows_from_regions(audio, speech_regions)
+
+    elif source in {"vad", "speechbrain_vad", "energy_vad"}:
+        vprint("[Speech] Creating full sliding windows, then filtering by VAD regions.")
+        windows, times = model._make_sliding_windows(audio)
+
+        windows, times = filter_windows_by_regions(
+            windows=windows,
+            times=times,
+            speech_regions=speech_regions,
+            min_speech_overlap=min_speech_overlap,
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown speech_source: {speech_source}. "
+            "Expected oracle, vad, speechbrain_vad, or energy_vad."
+        )
+
+    vprint(f"[Speech] Windows after speech selection: {len(windows)}")
+
+    result = model.predict_windows(
+        recording_id=sample.recording_id,
+        windows=windows,
+        times=times,
+    )
 
     metrics, mapping = evaluate_result(
         sample=sample,
@@ -241,100 +396,3 @@ def run_single_recording(
     )
 
     return sample, result, metrics, mapping
-
-
-def run_pipeline(
-    project_root,
-    audio_dir,
-    annotation_dir,
-    recording_id,
-    debug,
-    vad_threshold,
-    window_sec,
-    hop_sec,
-    model_type,
-    smoothing_kernel=1,
-    collar=0.25,
-    ignore_overlap=True,
-    clustering_method=None,
-    n_neighbors=10,
-    merge_gap=0.25,
-    min_seg_dur=0.75,
-):
-    vprint("\n=== Run Configuration ===")
-    vprint(f"audio_dir:      {audio_dir}")
-    vprint(f"annotation_dir: {annotation_dir}")
-    vprint(f"recording_id:   {recording_id}")
-    vprint(f"debug:          {debug}")
-    vprint(f"vad_threshold:  {vad_threshold}")
-    vprint(f"window_sec:     {window_sec}")
-    vprint(f"hop_sec:        {hop_sec}")
-    vprint(f"model_type:     {model_type}")
-    vprint(f"smoothing:      {smoothing_kernel}")
-    if clustering_method is not None:
-        vprint(f"clustering:     {clustering_method}")
-
-    vprint("=== Starting Diarization Pipeline ===")
-
-    vprint("\n[1/7] Loading dataset...")
-    dataset = build_dataset(
-        audio_dir=audio_dir,
-        annotation_dir=annotation_dir,
-        recording_id=recording_id,
-        target_sr=16000,
-    )
-
-    vprint("[2/7] Selecting recording...")
-    recording_id = select_recording(dataset, recording_id)
-
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-    vprint(f"[3/7] Initializing model on {device}...")
-    model = build_model(
-        model_type=model_type,
-        device=device,
-        window_sec=window_sec,
-        hop_sec=hop_sec,
-        vad_threshold=vad_threshold,
-        smoothing_kernel=smoothing_kernel,
-        cache_dir=f"{project_root}/outputs/cache",
-        use_embedding_cache=True,
-        clustering_method=clustering_method,
-        n_neighbors=n_neighbors,
-        merge_gap=merge_gap,
-        min_seg_dur=min_seg_dur,
-    )
-
-    vprint("[4/7] Running diarization and evaluation...")
-    sample, result, metrics, mapping = run_single_recording(
-        dataset=dataset,
-        recording_id=recording_id,
-        model=model,
-        collar=collar,
-        ignore_overlap=ignore_overlap,
-    )
-
-    vprint("\n=== Diarization Complete ===", 2)
-    vprint(f"Predicted segments: {len(result.segments)}", 2)
-    vprint("Showing first 20 predicted segments:", 2)
-    for seg in result.segments[:20]:
-        vprint(seg, 2)
-    if len(result.segments) > 20:
-        vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
-
-    vprint("[5/7] Saving predictions...", 2)
-    output_dir = Path(project_root) / "outputs"
-    pred_file = save_segments(result, output_dir)
-    vprint(f"Saved predictions to: {pred_file}", 2)
-
-    vprint("[6/7] Reporting DER...")
-    vprint(f"Cluster mapping: {mapping}")
-    print_metrics(metrics)
-
-    return {
-        "sample": sample,
-        "result": result,
-        "metrics": metrics,
-        "mapping": mapping,
-        "prediction_file": pred_file,
-    }

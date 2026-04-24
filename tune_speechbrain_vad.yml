@@ -1,0 +1,28 @@
+data:
+  audio_dir: data/amicorpus
+  annotation_dir: data/ami_public_manual_1.6.2
+  recordings: [ES2002a, ES2002b, ES2002c]
+
+evaluation:
+  collar: 0.25
+  ignore_overlap: true
+
+runtime:
+  cache_dir: outputs/cache
+  use_cache_values: [false]
+  out_csv: outputs/tuning_results.csv
+  summary_csv: outputs/tuning_summary.csv
+  verbose: 1
+
+grid:
+  model_types: [ecapa]
+  speech_sources: [speechbrain_vad]
+  vad_threshold_values: [0.00008]
+  min_speech_overlap_values: [0.5, 0.6, 0.7, 0.8]
+  window_values: [2.0, 3.0]
+  hop_values: [1.0, 1.5]
+  smoothing_values: [1, 3]
+  clustering_values: [spectral]
+  n_neighbors_values: [10, 15]
+  merge_gap_values: [0.25, 0.5]
+  min_seg_dur_values: [0.5, 0.75]

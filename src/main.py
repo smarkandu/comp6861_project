@@ -1,104 +1,58 @@
 import argparse
 from pathlib import Path
-from runner import run_pipeline
+import yaml
+
+from runner import DiarizationPipeline
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
-# Get current file location (same as your runner)
-ROOT = Path(__file__).resolve().parent
+def load_config(config_path: str) -> dict:
+    config_path = Path(config_path)
 
-# From this position, obtain project folder
-# <project_root>/src/main.py
-ROOT = ROOT.parent
-ROOT = str(ROOT)
+    if not config_path.is_absolute():
+        config_path = ROOT / config_path
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def main():
     parser = argparse.ArgumentParser(description="AMI speaker diarization entry point.")
 
-    # Debug flag (default = True)
     parser.add_argument(
-        "--debug",
-        action="store_true",
-        default=True,
-        help="Enable debug outputs (default: True)"
-    )
-
-    parser.add_argument(
-        "--no-debug",
-        action="store_false",
-        dest="debug",
-        help="Disable debug outputs"
-    )
-
-    parser.add_argument(
-        "--recording-id",
+        "--config",
         type=str,
-        default="ES2002a",
-        help="Recording ID (default: first available)"
-    )
-
-    parser.add_argument(
-        "--audio-dir",
-        type=str,
-        default=f"{ROOT}/data/amicorpus",
-        help="Path to audio directory"
-    )
-
-    parser.add_argument(
-        "--annotation-dir",
-        type=str,
-        default=f"{ROOT}/data/ami_public_manual_1.6.2",
-        help="Path to annotation directory"
-    )
-
-    parser.add_argument(
-        "--vad-threshold",
-        type=float,
-        default=8e-5,
-        help="Energy threshold for silence filtering (default: 8e-5)"
-    )
-
-    parser.add_argument(
-        "--window-sec",
-        type=float,
-        default=3,
-        help="Sliding window length in seconds (default: 3)"
-    )
-
-    parser.add_argument(
-        "--hop-sec",
-        type=float,
-        default=1.5,
-        help="Sliding window hop in seconds (default: 1.5)"
-    )
-
-    parser.add_argument(
-        "--model-type",
-        type=str,
-        default="ecapa",
-        choices=["baseline", "ecapa", "wavlm", "advanced"],
-        help=(
-            "Which diarization architecture to use. "
-            "'baseline' is a legacy alias for 'ecapa'. "
-            "'wavlm' uses WavLM embeddings. "
-            "'advanced' keeps the old spectral-clustering AdvancedDiarizer path."
-        )
+        default="config.yml",
+        help="Configuration file path",
     )
 
     args = parser.parse_args()
+    cfg = load_config(args.config)
 
-    run_pipeline(
-        project_root=ROOT,
-        audio_dir=args.audio_dir,
-        annotation_dir=args.annotation_dir,
-        recording_id=args.recording_id,
-        debug=args.debug,
-        vad_threshold=args.vad_threshold,
-        window_sec=args.window_sec,
-        hop_sec=args.hop_sec,
-        model_type=args.model_type,
+    pipeline = DiarizationPipeline(
+        project_root=str(ROOT),
+        audio_dir=cfg["data"]["audio_dir"],
+        annotation_dir=cfg["data"]["annotation_dir"],
+        recording_id=cfg["data"]["recording_id"],
+        debug=cfg["runtime"]["debug"],
+        vad_threshold=cfg["vad"]["threshold"],
+        window_sec=cfg["model"]["window_sec"],
+        hop_sec=cfg["model"]["hop_sec"],
+        model_type=cfg["model"]["model_type"],
+        smoothing_kernel=cfg["model"]["smoothing_kernel"],
+        collar=cfg["evaluation"]["collar"],
+        ignore_overlap=cfg["evaluation"]["ignore_overlap"],
+        clustering_method=cfg["cluster"]["method"],
+        n_neighbors=cfg["cluster"]["n_neighbors"],
+        merge_gap=cfg["segmentation"]["merge_gap"],
+        min_seg_dur=cfg["segmentation"]["min_seg_dur"],
+        use_embedding_cache=cfg["runtime"]["use_cache"],
+        speech_source=cfg["speech"]["source"],
+        min_speech_overlap=cfg["speech"]["min_speech_overlap"]
     )
 
+    pipeline.run()
 
 if __name__ == "__main__":
     main()

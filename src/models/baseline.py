@@ -7,8 +7,6 @@ from typing import Any, List, Sequence, Tuple
 import numpy as np
 from scipy.signal import medfilt
 
-from models.vad import EnergyVAD
-from models.vad import SpeechBrainVAD
 from debug import vprint
 from models.clustering import KMeansClustering, SpectralClusteringModel
 from models.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
@@ -32,18 +30,11 @@ class DiarizationResult:
 
 class BaselineDiarizer:
     """
-    Generic diarization pipeline:
-        audio -> oracle speech windows -> speaker embeddings -> KMeans -> smoothing -> merged segments
+    Generic diarization model:
 
-    model_type now controls which embedder is plugged in:
-        - ECAPAEmbedder for baseline/ecapa
-        - WavLMEmbedder for wavlm
+        windows -> speaker embeddings -> clustering -> smoothing -> merged segments
 
-    Embedding cache behavior:
-        - On the first run for a given recording/configuration/backend, embeddings are computed and
-          saved to disk.
-        - On later runs with the same configuration/backend, embeddings are loaded from disk instead
-          of being recomputed.
+    Speech-region selection and window creation should happen before this model is called.
     """
 
     def __init__(
@@ -55,9 +46,15 @@ class BaselineDiarizer:
         device: str = "cpu",
         random_state: int = 42,
         cache_dir: str | Path = "./outputs/cache",
-        use_embedding_cache: bool = True,
+        use_embedding_cache: bool = False,
         vad_threshold=1e-4,
         embedder: BaseSpeakerEmbedder | None = None,
+        clustering_method: str | None = "spectral",
+        n_neighbors: int = 10,
+        merge_gap: float = 0.25,
+        min_seg_dur: float = 0.75,
+        estimate_num_speakers: bool = False,
+        num_speakers: int | None = None,
     ) -> None:
         self.target_sr = target_sr
         self.window_sec = window_sec
@@ -69,54 +66,54 @@ class BaselineDiarizer:
         self.use_embedding_cache = use_embedding_cache
         self.vad_threshold = vad_threshold
 
-        # Default keeps old behavior if caller does not pass an embedder.
+        self.clustering_method = clustering_method or "spectral"
+        self.n_neighbors = n_neighbors
+        self.merge_gap = merge_gap
+        self.min_seg_dur = min_seg_dur
+        self.estimate_num_speakers = estimate_num_speakers
+        self.num_speakers = num_speakers
+
         self.embedder = embedder if embedder is not None else ECAPAEmbedder(device=device)
-        self.embedding_backend = getattr(self.embedder, "name", self.embedder.__class__.__name__.lower())
+        self.embedding_backend = getattr(
+            self.embedder,
+            "name",
+            self.embedder.__class__.__name__.lower(),
+        )
 
-        self.vad = SpeechBrainVAD(device=device)  # EnergyVAD(threshold=vad_threshold)
-        self.min_speech_overlap = 0.65
-
-        # Ensure the cache directory exists before inference starts.
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def predict(self, sample: Any) -> DiarizationResult:
+    def set_num_speakers(self, n_speakers: int | None) -> None:
+        self.num_speakers = n_speakers
+
+    def predict_windows(
+        self,
+        recording_id: str,
+        windows: Sequence[np.ndarray],
+        times: Sequence[Tuple[float, float]],
+    ) -> DiarizationResult:
         """
-        Expected sample formats:
-          1) dict-like with keys:
-             - "audio": waveform as numpy array
-             - "sr": sample rate
-             - "recording_id": string
-             - "selected_speakers": list[str] OR "n_speakers": int
-          2) object with equivalent attributes
+        Main model entry point.
 
-        Returns:
-            DiarizationResult
+        Assumes speech selection and window creation were already done by the pipeline.
         """
-        audio = self._get_field(sample, "audio")
-        sr = self._get_field(sample, "sr")
-        recording_id = self._get_field(sample, "recording_id", default="unknown")
-
-        n_speakers = self._infer_num_speakers(sample)
-        if n_speakers is None:
-            raise ValueError(
-                "BaselineDiarizer requires the number of speakers. "
-                "Provide sample['n_speakers'] or sample['selected_speakers']."
-            )
-
-        vprint("[Diarizer] Preparing audio...", 2)
-        audio = self._prepare_audio(audio, sr)
-
-        events = self._get_field(sample, "events")
-        vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
-        windows, times = self._make_windows_from_events(audio, events)
-        vprint(f"[Diarizer] Total windows: {len(windows)}", 2)
-
         if len(windows) == 0:
             vprint("[Diarizer] No windows found.", 2)
             return DiarizationResult(recording_id=recording_id, segments=[])
 
-        # Load cached embeddings when available so that repeated experiments do not
-        # have to recompute the most expensive step of the pipeline.
+        if len(windows) != len(times):
+            raise ValueError(
+                f"windows and times must have same length, got "
+                f"{len(windows)} windows and {len(times)} times"
+            )
+
+        if self.num_speakers is None and not self.estimate_num_speakers:
+            raise ValueError(
+                "num_speakers is required when estimate_num_speakers=False. "
+                "Call model.set_num_speakers(sample.num_speakers), or enable speaker estimation."
+            )
+
+        vprint(f"[Diarizer] Total windows: {len(windows)}", 2)
+
         embeddings = None
         cache_path = self._get_cache_path(recording_id)
 
@@ -125,13 +122,10 @@ class BaselineDiarizer:
             cache = np.load(cache_path, allow_pickle=False)
             embeddings = cache["embeddings"]
             cached_times = cache["times"]
-
-            # Rebuild the list of (start, end) tuples from the saved NumPy array so the
-            # rest of the pipeline can keep using the same format as before.
             times = [tuple(row) for row in cached_times.tolist()]
 
         if embeddings is None:
-            vprint(f"[Diarizer] Extracting {self.embedding_backend} embeddings...")
+            vprint(f"[Diarizer] Extracting {self.embedding_backend} embeddings.")
             embeddings = self._extract_embeddings(windows)
 
             if self.use_embedding_cache:
@@ -142,18 +136,20 @@ class BaselineDiarizer:
                     times=np.asarray(times, dtype=np.float32),
                 )
 
-        vprint("[Diarizer] Clustering embeddings...")
-        labels = self._cluster_embeddings(embeddings, n_speakers)
+        vprint("[Diarizer] Clustering embeddings.")
+        labels = self._cluster_embeddings(embeddings)
 
-        vprint("[Diarizer] Smoothing labels...")
+        vprint("[Diarizer] Smoothing labels.")
         labels = self._smooth_labels(labels, self.smoothing_kernel)
 
-        vprint("[Diarizer] Merging segments...")
+        vprint("[Diarizer] Merging segments.")
         merged = self._merge_segments(times, labels)
-        merged = self._merge_close_segments(merged, max_gap=0.25)
-
-        min_seg_dur = 0.75
-        merged = [(s, e, lab) for (s, e, lab) in merged if (e - s) >= min_seg_dur]
+        merged = self._merge_close_segments(merged, max_gap=self.merge_gap)
+        merged = [
+            (s, e, lab)
+            for (s, e, lab) in merged
+            if (e - s) >= self.min_seg_dur
+        ]
 
         vprint("[Diarizer] Done.")
 
@@ -161,17 +157,44 @@ class BaselineDiarizer:
             DiarizationSegment(start=s, end=e, speaker=f"cluster_{lab}")
             for s, e, lab in merged
         ]
+
         return DiarizationResult(recording_id=recording_id, segments=segments)
+
+    def predict(self, sample: Any) -> DiarizationResult:
+        """
+        Backward-compatible path.
+
+        Prefer using predict_windows() from the runner after oracle/VAD preprocessing.
+        """
+        audio = self._get_field(sample, "audio")
+        sr = self._get_field(sample, "sr")
+        recording_id = self._get_field(sample, "recording_id", default="unknown")
+
+        n_speakers = self._infer_num_speakers(sample)
+        self.set_num_speakers(n_speakers)
+
+        vprint("[Diarizer] Preparing audio...", 2)
+        audio = self._prepare_audio(audio, sr)
+
+        events = self._get_field(sample, "events")
+        vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
+        windows, times = self._make_windows_from_events(audio, events)
+
+        return self.predict_windows(
+            recording_id=recording_id,
+            windows=windows,
+            times=times,
+        )
 
     def _prepare_audio(self, audio: np.ndarray, sr: int) -> np.ndarray:
         audio = np.asarray(audio, dtype=np.float32)
 
-        # Stereo -> mono
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
 
         if sr != self.target_sr:
             import librosa
+
             audio = librosa.resample(
                 audio,
                 orig_sr=sr,
@@ -185,25 +208,30 @@ class BaselineDiarizer:
         audio: np.ndarray,
         events,
     ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
+        speech_regions = [
+            (float(ev["start"]), float(ev["end"]))
+            for ev in events
+            if float(ev["end"]) > float(ev["start"])
+        ]
+
+        return self._make_windows_from_regions(audio, speech_regions)
+
+    def _make_windows_from_regions(
+        self,
+        audio: np.ndarray,
+        speech_regions: Sequence[Tuple[float, float]],
+    ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
         win = int(self.window_sec * self.target_sr)
         hop = int(self.hop_sec * self.target_sr)
 
         windows: List[np.ndarray] = []
         times: List[Tuple[float, float]] = []
 
-        for ev in events:
-            start_sec = float(ev["start"])
-            end_sec = float(ev["end"])
-
+        for start_sec, end_sec in speech_regions:
             start_idx = int(start_sec * self.target_sr)
             end_idx = int(end_sec * self.target_sr)
 
             seg_len = end_idx - start_idx
-            if seg_len <= 0:
-                continue
-
-            # If the speech segment is shorter than one window, skip it for now.
-            # This matches your current fixed-window design and keeps the change simple.
             if seg_len < win:
                 continue
 
@@ -215,6 +243,26 @@ class BaselineDiarizer:
 
         return windows, times
 
+    def _make_sliding_windows(
+        self,
+        audio: np.ndarray,
+    ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
+        win = int(self.window_sec * self.target_sr)
+        hop = int(self.hop_sec * self.target_sr)
+
+        windows: List[np.ndarray] = []
+        times: List[Tuple[float, float]] = []
+
+        if len(audio) < win:
+            return windows, times
+
+        for s in range(0, len(audio) - win + 1, hop):
+            e = s + win
+            windows.append(audio[s:e])
+            times.append((s / self.target_sr, e / self.target_sr))
+
+        return windows, times
+
     def _extract_embeddings(self, windows: Sequence[np.ndarray]) -> np.ndarray:
         import time
 
@@ -222,13 +270,12 @@ class BaselineDiarizer:
         total = len(windows)
         start_time = time.time()
 
-        vprint("[Embeddings] Starting extraction...")
+        vprint("[Embeddings] Starting extraction.")
         vprint(f"[Embeddings] Backend: {self.embedding_backend}")
         vprint(f"[Embeddings] Total windows: {total}")
         vprint(f"[Embeddings] Device: {self.device}")
 
         for i, w in enumerate(windows):
-            # Progress print so long recordings do not appear stuck.
             if i % 50 == 0 or i == total - 1:
                 elapsed = time.time() - start_time
                 progress = i / total
@@ -238,7 +285,8 @@ class BaselineDiarizer:
                     f"[Embeddings] {i}/{total} "
                     f"({progress * 100:.1f}%) "
                     f"| Elapsed: {elapsed:.1f}s "
-                    f"| ETA: {eta:.1f}s", 2
+                    f"| ETA: {eta:.1f}s",
+                    2,
                 )
 
             emb = self.embedder.encode(w, self.target_sr)
@@ -251,27 +299,39 @@ class BaselineDiarizer:
 
         return embeddings
 
-    def _cluster_embeddings(
-        self,
-        embeddings: np.ndarray,
-        n_speakers: int,
-    ) -> np.ndarray:
+    def _cluster_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         embeddings = embeddings / np.clip(norms, 1e-12, None)
 
-        # km = KMeansClustering(
-        #     random_state=self.random_state,
-        #     n_init=20,
-        # )
+        if self.estimate_num_speakers:
+            raise NotImplementedError(
+                "estimate_num_speakers=True is implemented in AdvancedDiarizer, "
+                "not BaselineDiarizer."
+            )
 
-        clustering = SpectralClusteringModel(
-            random_state=self.random_state,
-            affinity="nearest_neighbors",
-            n_neighbors=10,
-            assign_labels="kmeans",
-        )
+        if self.num_speakers is None:
+            raise ValueError("num_speakers must be set before clustering.")
 
-        return clustering.fit_predict(embeddings, n_clusters=n_speakers)
+        method = self.clustering_method.lower()
+
+        if method == "kmeans":
+            clustering = KMeansClustering(
+                random_state=self.random_state,
+                n_init=20,
+            )
+
+        elif method == "spectral":
+            clustering = SpectralClusteringModel(
+                random_state=self.random_state,
+                affinity="nearest_neighbors",
+                n_neighbors=self.n_neighbors,
+                assign_labels="kmeans",
+            )
+
+        else:
+            raise ValueError(f"Unknown clustering_method: {self.clustering_method}")
+
+        return clustering.fit_predict(embeddings, n_clusters=self.num_speakers)
 
     def _smooth_labels(self, labels: np.ndarray, kernel_size: int) -> np.ndarray:
         if kernel_size <= 1:
@@ -282,11 +342,7 @@ class BaselineDiarizer:
 
         return medfilt(labels, kernel_size=kernel_size).astype(int)
 
-    def _merge_segments(
-        self,
-        times,
-        labels,
-    ):
+    def _merge_segments(self, times, labels):
         if len(labels) == 0:
             return []
 
@@ -333,9 +389,8 @@ class BaselineDiarizer:
 
     def _get_cache_path(self, recording_id: str) -> Path:
         safe_id = recording_id.replace("/", "_").replace("\\", "_")
-        vad_str = str(self.vad_threshold).replace(".", "p")
-        overlap_str = str(self.min_speech_overlap).replace(".", "p")
         backend_str = str(self.embedding_backend).replace("/", "_").replace("\\", "_")
+        cluster_str = str(self.clustering_method).replace("/", "_").replace("\\", "_")
 
         return self.cache_dir / (
             f"{safe_id}"
@@ -343,8 +398,9 @@ class BaselineDiarizer:
             f"_sr{self.target_sr}"
             f"_w{self.window_sec:g}"
             f"_h{self.hop_sec:g}"
-            f"_vad{vad_str}"
-            f"_ov{overlap_str}.npz"
+            f"_cluster{cluster_str}"
+            f"_k{self.num_speakers}"
+            f".npz"
         )
 
     @staticmethod
@@ -353,24 +409,21 @@ class BaselineDiarizer:
             return sample.get(key, default)
         return getattr(sample, key, default)
 
-    @staticmethod
-    def _infer_num_speakers(sample: Any) -> int | None:
-        if isinstance(sample, dict):
-            if "n_speakers" in sample:
-                return int(sample["n_speakers"])
-            if "selected_speakers" in sample:
-                return len(sample["selected_speakers"])
-            if "speakers" in sample:
-                return len(sample["speakers"])
-            return None
+    def _infer_num_speakers(self, sample: Any) -> int | None:
+        explicit = self._get_field(sample, "n_speakers", default=None)
+        if explicit is not None:
+            return int(explicit)
 
-        if hasattr(sample, "n_speakers"):
-            return int(sample.n_speakers)
-        if hasattr(sample, "selected_speakers"):
-            return len(sample.selected_speakers)
-        if hasattr(sample, "num_speakers"):
-            return int(sample.num_speakers)
-        if hasattr(sample, "speakers"):
-            return len(sample.speakers)
+        selected = self._get_field(sample, "selected_speakers", default=None)
+        if selected is not None:
+            return len(selected)
+
+        speakers = self._get_field(sample, "speakers", default=None)
+        if speakers is not None:
+            return len(speakers)
+
+        num_speakers = self._get_field(sample, "num_speakers", default=None)
+        if num_speakers is not None:
+            return int(num_speakers)
 
         return None
