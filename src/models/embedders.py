@@ -91,7 +91,10 @@ class WavLMEmbedder(BaseSpeakerEmbedder):
         from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
 
         self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(model_name)
-        self.model = WavLMForXVector.from_pretrained(model_name).to(device)
+        self.model = WavLMForXVector.from_pretrained(
+            model_name,
+            use_safetensors=True,
+        ).to(device)
         self.model.eval()
 
     def encode(self, audio: np.ndarray, sr: int) -> np.ndarray:
