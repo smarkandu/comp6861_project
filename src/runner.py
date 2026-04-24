@@ -287,7 +287,7 @@ def run_pipeline(
     vprint("[2/7] Selecting recording...")
     recording_id = select_recording(dataset, recording_id)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     vprint(f"[3/7] Initializing model on {device}...")
     model = build_model(

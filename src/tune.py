@@ -226,7 +226,7 @@ def main():
     merge_gap_values = parse_float_list(args.merge_gap_values, [0.25])
     min_seg_dur_values = parse_float_list(args.min_seg_dur_values, [0.75])
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     ignore_overlap = not args.include_overlap
 
     configs = make_grid(
