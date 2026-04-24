@@ -89,13 +89,12 @@ class AMIDataset(BaseDiarizationDataset):
 
     def load_events(self, recording_id: str):
         xml_paths = self.get_annotation_paths(recording_id)
+        audio_duration = self.get_audio_duration(recording_id)
 
         events = []
 
         for xml_path in xml_paths:
             fname = os.path.basename(xml_path)
-
-            # Example: ES2002a.A.segments.xml -> speaker_id = A
             parts = fname.split(".")
             if len(parts) < 4:
                 continue
@@ -104,7 +103,6 @@ class AMIDataset(BaseDiarizationDataset):
             tree = ET.parse(xml_path)
             root = tree.getroot()
 
-            # Be slightly flexible about tag names
             for seg in root.iter():
                 tag = seg.tag.lower()
 
@@ -112,14 +110,14 @@ class AMIDataset(BaseDiarizationDataset):
                     continue
 
                 start = (
-                    seg.attrib.get("starttime")
-                    or seg.attrib.get("transcriber_start")
-                    or seg.attrib.get("start")
+                        seg.attrib.get("starttime")
+                        or seg.attrib.get("transcriber_start")
+                        or seg.attrib.get("start")
                 )
                 end = (
-                    seg.attrib.get("endtime")
-                    or seg.attrib.get("transcriber_end")
-                    or seg.attrib.get("end")
+                        seg.attrib.get("endtime")
+                        or seg.attrib.get("transcriber_end")
+                        or seg.attrib.get("end")
                 )
 
                 if start is None or end is None:
@@ -127,6 +125,8 @@ class AMIDataset(BaseDiarizationDataset):
 
                 start = float(start)
                 end = float(end)
+
+                end = min(end, audio_duration)
 
                 if end <= start:
                     continue
@@ -143,3 +143,8 @@ class AMIDataset(BaseDiarizationDataset):
         events = self.load_events(recording_id)
         speakers = sorted({spk for ev in events for spk in ev["speakers"]})
         return speakers
+
+    def get_audio_duration(self, recording_id: str) -> float:
+        path = self.get_audio_path(recording_id)
+        info = sf.info(path)
+        return info.frames / float(info.samplerate)
