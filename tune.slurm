@@ -8,6 +8,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
+#SBATCH --mail-user=s_markan@hotmail.com
+#SBATCH --mail-type=BEGIN,END,FAIL
 
 echo "Host: $(hostname)"
 echo "Start time: $(date)"
