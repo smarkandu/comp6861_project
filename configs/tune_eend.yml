@@ -5,12 +5,18 @@ data:
   train_recordings:
     - ES2002a
     - ES2002b
+    - ES2005a
+    - ES2005b
+    - ES2006a
+    - ES2006b
 
   val_recordings:
     - ES2003a
+    - ES2004a
 
   test_recordings:
-    - ES2004a
+    - ES2007a
+    - ES2008a
 
 features:
   sample_rate: 16000
