@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --mail-user=s_markan@hotmail.com
 #SBATCH --mail-type=BEGIN,END,FAIL
 
@@ -27,7 +27,7 @@ echo "Using config: $CONFIG_PATH"
 module load python cuda 2>/dev/null || true
 
 # --- Activate environment (may need to be edited) ---
-source "$SLURM_SUBMIT_DIR/comp6861_env/bin/activate"
+source "$SLURM_SUBMIT_DIR/comp6861_env_wsl/bin/activate"
 
 # --- HF cache to scratch (important) ---
 export HF_HOME=/scratch/$USER/.hf
