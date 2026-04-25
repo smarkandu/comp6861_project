@@ -1,6 +1,5 @@
 metadata.csv
 comp6861_env/
-data/
 *.bak
 pretrained_ecapa/
 *.pyc
@@ -8,5 +7,10 @@ pretrained_ecapa/
 .idea/
 comp6861_env_wsl/
 *.ckpt
-*.sh
 outputs/
+data/ami_public_manual_1.6.2/argumentation/ae/ES2005c.C.argumentstructs.xml
+data/ami_public_manual_1.6.2/
+*.wav
+*.1
+*.bat
+env.sh
