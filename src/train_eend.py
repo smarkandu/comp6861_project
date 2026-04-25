@@ -10,6 +10,10 @@ def train_eend(
     val_loader,
     input_dim=80,
     num_speakers=4,
+    hidden_dim=128,
+    num_layers=2,
+    num_heads=4,
+    dropout=0.1,
     epochs=10,
     lr=1e-4,
     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
@@ -23,11 +27,11 @@ def train_eend(
 
     model = TinyEEND(
         input_dim=input_dim,
-        hidden_dim=128,
+        hidden_dim=hidden_dim,
         num_speakers=num_speakers,
-        num_layers=2,
-        num_heads=4,
-        dropout=0.1,
+        num_layers=num_layers,
+        num_heads=num_heads,
+        dropout=dropout,
     ).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
@@ -104,6 +108,11 @@ def train_eend(
                     "val_loss": val_loss,
                     "input_dim": input_dim,
                     "num_speakers": num_speakers,
+                    "hidden_dim": hidden_dim,
+                    "num_layers": num_layers,
+                    "num_heads": num_heads,
+                    "dropout": dropout,
+                    "lr": lr,
                 },
                 save_path,
             )
@@ -128,7 +137,7 @@ def train_eend(
     checkpoint = torch.load(save_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     
-    return model
+    return model, best_val_loss
 
 @torch.no_grad()
 def evaluate_eend_loss(model, val_loader, device):
@@ -177,9 +186,15 @@ def main():
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = train_eend(
+    model, best_val_loss = train_eend(
         train_loader,
         val_loader,
+        input_dim=80,
+        num_speakers=4,
+        hidden_dim=128,
+        num_layers=2,
+        num_heads=4,
+        dropout=0.1,
         epochs=30,
         lr=3e-4,
         device=device,

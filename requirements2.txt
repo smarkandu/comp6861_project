@@ -2,3 +2,7 @@ torch
 numpy
 transformers
 torchaudio
+matplotlib
+librosa
+segments
+speechbrain
