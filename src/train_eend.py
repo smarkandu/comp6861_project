@@ -4,7 +4,6 @@ import torch
 from models.eend import TinyEEND
 from models.eend_loss import pit_bce_loss
 from debug import vprint
-from datasets.ami import AMIDataset, resolve_recording_audio_dir
 
 def train_eend(
     train_loader,
@@ -13,8 +12,7 @@ def train_eend(
     num_speakers=4,
     epochs=10,
     lr=1e-4,
-    device="cuda",
-    v=1,
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     save_path="outputs/models/eend_best.pt",
     patience=5,
     min_delta=1e-4,
@@ -79,19 +77,14 @@ def train_eend(
             total_loss += loss.item()
 
             if i % max(1, len(train_loader) // 5) == 0:
-                vprint(
-                    1,
-                    f"[Train] Batch {i + 1}/{len(train_loader)} | loss={loss.item():.4f}"
-                )
+                vprint(f"[Train] Batch {i + 1}/{len(train_loader)} | loss={loss.item():.4f}")
 
         avg_train_loss = total_loss / max(1, len(train_loader))
 
         vprint("[INFO] Running validation...")
-        val_loss = evaluate_eend_loss(model, val_loader, device, v=v)
+        val_loss = evaluate_eend_loss(model, val_loader, device)
 
-        vprint(
-            1,
-            f"Epoch {epoch:02d}/{epochs} | "
+        vprint(f"Epoch {epoch:02d}/{epochs} | "
             f"train_loss={avg_train_loss:.4f} | "
             f"val_loss={val_loss:.4f}"
         )
@@ -118,16 +111,12 @@ def train_eend(
             vprint(f"[INFO] Saved new best model → {save_path}")
         else:
             epochs_without_improvement += 1
-            vprint(
-                1,
-                f"[INFO] No improvement for "
+            vprint(f"[INFO] No improvement for "
                 f"{epochs_without_improvement}/{patience} epoch(s)"
             )
 
         if epochs_without_improvement >= patience:
-            vprint(
-                1,
-                f"[INFO] Early stopping triggered at epoch {epoch}. "
+            vprint(f"[INFO] Early stopping triggered at epoch {epoch}. "
                 f"Best epoch was {best_epoch} with val_loss={best_val_loss:.4f}"
             )
             break
@@ -136,15 +125,13 @@ def train_eend(
     vprint(f"[INFO] Best epoch: {best_epoch}")
     vprint(f"[INFO] Best val_loss: {best_val_loss:.4f}")
     vprint(f"[INFO] Best model saved at: {save_path}")
-
+    checkpoint = torch.load(save_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    
     return model
 
 @torch.no_grad()
-def evaluate_eend_loss(model, val_loader, device, v=0):
-    def vprint(level, msg):
-        if v >= level:
-            print(msg)
-
+def evaluate_eend_loss(model, val_loader, device):
     model.eval()
     total_loss = 0.0
 
@@ -161,11 +148,7 @@ def evaluate_eend_loss(model, val_loader, device, v=0):
 
         total_loss += loss.item()
 
-        if v >= 2:
-            vprint(
-                2,
-                f"[Val] Batch {i + 1}/{len(val_loader)} | loss={loss.item():.4f}"
-            )
+        vprint(f"[Val] Batch {i + 1}/{len(val_loader)} | loss={loss.item():.4f}")
 
     return total_loss / max(1, len(val_loader))
 
@@ -173,33 +156,36 @@ def evaluate_eend_loss(model, val_loader, device, v=0):
 from datasets.ami import AMIDataset
 from datasets.eend_dataset import create_eend_dataloaders
 
-recording_audio_dir = "./data/amicorpus"
-ami = AMIDataset(
-    audio_dir=recording_audio_dir,
-    annotation_dir="./data/ami_public_manual_1.6.2",
-    target_sr=16000,
-)
+def main():
+    recording_audio_dir = "./data/amicorpus"
+    ami = AMIDataset(
+        audio_dir=recording_audio_dir,
+        annotation_dir="./data/ami_public_manual_1.6.2",
+        target_sr=16000,
+    )
 
-train_loader, val_loader, test_loader = create_eend_dataloaders(
-    ami_dataset=ami,
-    train_recordings=["ES2002a", "ES2002b"],
-    val_recordings=["ES2003a"],
-    test_recordings=["ES2004a"],
-    sample_rate=16000,
-    n_mels=80,
-    hop_length=160,
-    num_speakers=4,
-    batch_size=1,
-)
+    train_loader, val_loader, test_loader = create_eend_dataloaders(
+        ami_dataset=ami,
+        train_recordings=["ES2002a", "ES2002b"],
+        val_recordings=["ES2003a"],
+        test_recordings=["ES2004a"],
+        sample_rate=16000,
+        n_mels=80,
+        hop_length=160,
+        num_speakers=4,
+        batch_size=1,
+    )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = train_eend(
-    train_loader,
-    val_loader,
-    epochs=30,
-    lr=3e-4,
-    device=device,
-    v=1,
-    save_path="./models/eend_best.pt",
-    patience=5,
-)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = train_eend(
+        train_loader,
+        val_loader,
+        epochs=30,
+        lr=3e-4,
+        device=device,
+        save_path="./models/eend_best.pt",
+        patience=5,
+    )
+
+if __name__ == "__main__":
+    main()
