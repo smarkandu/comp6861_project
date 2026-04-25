@@ -1,7 +1,7 @@
-from pathlib import Path
 import torch
+from pathlib import Path
 
-from datasets.ami import AMIDataset
+from datasets.ami import AMIDataset, resolve_recording_audio_dir
 from eval.evaluation import (
     apply_mapping_to_frame_sets,
     build_collar_mask,
@@ -186,19 +186,6 @@ def print_metrics(metrics: dict) -> None:
             vprint(f"{key}: {value:.4f}")
         else:
             vprint(f"{key}: {value}")
-
-
-def resolve_recording_audio_dir(audio_dir, recording_id):
-    audio_dir = Path(audio_dir)
-
-    if recording_id is None:
-        return audio_dir
-
-    nested_audio_dir = audio_dir / recording_id / "audio"
-    if nested_audio_dir.exists():
-        return nested_audio_dir
-
-    return audio_dir
 
 
 def build_dataset(audio_dir, annotation_dir, recording_id=None, target_sr=16000):

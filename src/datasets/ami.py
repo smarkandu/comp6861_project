@@ -4,7 +4,7 @@ import soundfile as sf
 import librosa
 import numpy as np
 from datasets.base import BaseDiarizationDataset
-
+from pathlib import Path
 
 class AMIDataset(BaseDiarizationDataset):
     def __init__(self, audio_dir: str, annotation_dir: str, target_sr: int = 16000):
@@ -13,38 +13,35 @@ class AMIDataset(BaseDiarizationDataset):
         self.target_sr = target_sr
 
     def list_recordings(self):
-        """
-        Return AMI meeting IDs like ES2002a, not full wav stems like ES2002a.Mix-Headset.
-        """
-        files = []
-        for fname in os.listdir(self.audio_dir):
-            if not fname.endswith(".wav"):
-                continue
+        meeting_ids = set()
 
-            stem = os.path.splitext(fname)[0]
+        for root, _, files in os.walk(self.audio_dir):
+            for fname in files:
+                if not fname.endswith(".wav"):
+                    continue
 
-            # Example: ES2002a.Mix-Headset -> ES2002a
-            meeting_id = stem.split(".")[0]
-            files.append(meeting_id)
+                stem = os.path.splitext(fname)[0]
 
-        return sorted(set(files))
+                meeting_id = stem.split(".")[0]
+                meeting_ids.add(meeting_id)
+
+        return sorted(meeting_ids)
 
     def get_audio_path(self, recording_id: str) -> str:
-        """
-        Prefer Mix-Headset audio for diarization.
-        """
+        audio_dir = resolve_recording_audio_dir(self.audio_dir, recording_id)
+
         candidates = [
-            os.path.join(self.audio_dir, f"{recording_id}.Mix-Headset.wav"),
-            os.path.join(self.audio_dir, f"{recording_id}.HeadMix.wav"),
-            os.path.join(self.audio_dir, f"{recording_id}.wav"),
+            audio_dir / f"{recording_id}.Mix-Headset.wav",
+            audio_dir / f"{recording_id}.HeadMix.wav",
+            audio_dir / f"{recording_id}.wav",
         ]
 
         for path in candidates:
-            if os.path.exists(path):
-                return path
+            if path.exists():
+                return str(path)
 
         raise FileNotFoundError(
-            f"No mixed audio file found for recording_id={recording_id} in {self.audio_dir}"
+            f"No mixed audio file found for recording_id={recording_id}"
         )
 
     def get_annotation_paths(self, recording_id: str):
@@ -70,9 +67,15 @@ class AMIDataset(BaseDiarizationDataset):
 
         return sorted(paths)
 
+    # def find_file_path(self, filename: str):
+    #     for path in Path(self.audio_dir).rglob(filename):
+    #         return path  # first match
+    #
+    #     return None
+
     def load_audio(self, recording_id: str):
-        path = self.get_audio_path(recording_id)
-        audio, sr = sf.read(path)
+        file_path = self.get_audio_path(recording_id)
+        audio, sr = sf.read(file_path)
 
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1)
@@ -148,3 +151,16 @@ class AMIDataset(BaseDiarizationDataset):
         path = self.get_audio_path(recording_id)
         info = sf.info(path)
         return info.frames / float(info.samplerate)
+
+def resolve_recording_audio_dir(audio_dir, recording_id):
+    audio_dir = Path(audio_dir)
+
+    if recording_id is None:
+        return audio_dir
+
+    nested_audio_dir = audio_dir / recording_id / "audio"
+    if nested_audio_dir.exists():
+        return nested_audio_dir
+
+    return audio_dir
+
