@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=diarization
-#SBATCH --output=logs/diar_%j.out
-#SBATCH --error=logs/diar_%j.err
+#SBATCH --job-name=tune
+#SBATCH --output=logs/tune_%j.out
+#SBATCH --error=logs/tune_%j.err
 
 #SBATCH --account=def-msh-ab   # change if needed
 #SBATCH --gres=gpu:1
