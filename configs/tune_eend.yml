@@ -37,6 +37,6 @@ grid:
   dropout_values: [0.1, 0.2, 0.3]
   lr_values: [0.0001, 0.0003]
   batch_size_values: [1]
-  epoch_values: [10, 15]
+  epoch_values: [20]
   patience_values: [3]
   threshold_values: [0.5]
