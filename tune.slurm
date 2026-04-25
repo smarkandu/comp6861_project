@@ -37,6 +37,6 @@ export HF_HUB_CACHE=/scratch/$USER/.hf/hub
 cd $SLURM_SUBMIT_DIR
 
 # --- Run ---
-python src/train.py --config "$CONFIG_PATH"
+python src/tune.py --config "$CONFIG_PATH"
 
 echo "End time: $(date)"
