@@ -170,6 +170,5 @@ wget    -P amicorpus/IN1012/audio https://groups.inf.ed.ac.uk/ami/AMICorpusMirro
 wget    -P amicorpus/IN1013/audio https://groups.inf.ed.ac.uk/ami/AMICorpusMirror//amicorpus/IN1013/audio/IN1013.Mix-Headset.wav
 wget    -P amicorpus/IN1014/audio https://groups.inf.ed.ac.uk/ami/AMICorpusMirror//amicorpus/IN1014/audio/IN1014.Mix-Headset.wav
 wget    -P amicorpus/IN1016/audio https://groups.inf.ed.ac.uk/ami/AMICorpusMirror//amicorpus/IN1016/audio/IN1016.Mix-Headset.wav
-wget  https://groups.inf.ed.ac.uk/ami/download/temp/../CCBY4.0.txt
 wget  https://groups.inf.ed.ac.uk/ami/AMICorpusAnnotations/ami_public_manual_1.6.2.zip
 unzip ami_public_manual_1.6.2.zip -d ami_public_manual_1.6.2
