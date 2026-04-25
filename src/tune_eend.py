@@ -165,7 +165,6 @@ def main():
                 epochs=config.epochs,
                 lr=config.lr,
                 device=device,
-                v=int(runtime.get("verbose", 1)),
                 save_path=str(save_path),
                 patience=config.patience,
             )

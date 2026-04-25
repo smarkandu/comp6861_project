@@ -1,6 +1,6 @@
 data:
-  audio_dir: /content/drive/MyDrive/comp6861_project/data/amicorpus
-  annotation_dir: /content/drive/MyDrive/comp6861_project/data/ami_public_manual_1.6.2
+  audio_dir: data/amicorpus
+  annotation_dir: data/ami_public_manual_1.6.2
 
 split:
   train_recordings: [ES2002a, ES2002b, ES2002c]
