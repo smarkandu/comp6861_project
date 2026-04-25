@@ -65,21 +65,21 @@ class BaseVAD(ABC):
     def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
         raise NotImplementedError
 
-    def filter_windows(
-        self,
-        windows: Sequence[np.ndarray],
-        times: Sequence[TimeSpan],
-        audio: np.ndarray,
-        sr: int,
-        min_speech_overlap: float = 0.0,
-    ) -> Tuple[List[np.ndarray], List[TimeSpan]]:
-        speech_regions = self.get_speech_regions(audio, sr)
-        return filter_windows_by_regions(
-            windows=windows,
-            times=times,
-            speech_regions=speech_regions,
-            min_speech_overlap=min_speech_overlap,
-        )
+    # def filter_windows(
+    #     self,
+    #     windows: Sequence[np.ndarray],
+    #     times: Sequence[TimeSpan],
+    #     audio: np.ndarray,
+    #     sr: int,
+    #     min_speech_overlap: float = 0.0,
+    # ) -> Tuple[List[np.ndarray], List[TimeSpan]]:
+    #     speech_regions = self.get_speech_regions(audio, sr)
+    #     return filter_windows_by_regions(
+    #         windows=windows,
+    #         times=times,
+    #         speech_regions=speech_regions,
+    #         min_speech_overlap=min_speech_overlap,
+    #     )
 
 
 # --------------------------------------------------

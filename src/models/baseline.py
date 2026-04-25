@@ -160,31 +160,31 @@ class BaselineDiarizer:
 
         return DiarizationResult(recording_id=recording_id, segments=segments)
 
-    def predict(self, sample: Any) -> DiarizationResult:
-        """
-        Backward-compatible path.
-
-        Prefer using predict_windows() from the runner after oracle/VAD preprocessing.
-        """
-        audio = self._get_field(sample, "audio")
-        sr = self._get_field(sample, "sr")
-        recording_id = self._get_field(sample, "recording_id", default="unknown")
-
-        n_speakers = self._infer_num_speakers(sample)
-        self.set_num_speakers(n_speakers)
-
-        vprint("[Diarizer] Preparing audio...", 2)
-        audio = self._prepare_audio(audio, sr)
-
-        events = self._get_field(sample, "events")
-        vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
-        windows, times = self._make_windows_from_events(audio, events)
-
-        return self.predict_windows(
-            recording_id=recording_id,
-            windows=windows,
-            times=times,
-        )
+    # def predict(self, sample: Any) -> DiarizationResult:
+    #     """
+    #     Backward-compatible path.
+    #
+    #     Prefer using predict_windows() from the runner after oracle/VAD preprocessing.
+    #     """
+    #     audio = self._get_field(sample, "audio")
+    #     sr = self._get_field(sample, "sr")
+    #     recording_id = self._get_field(sample, "recording_id", default="unknown")
+    #
+    #     n_speakers = self._infer_num_speakers(sample)
+    #     self.set_num_speakers(n_speakers)
+    #
+    #     vprint("[Diarizer] Preparing audio...", 2)
+    #     audio = self._prepare_audio(audio, sr)
+    #
+    #     events = self._get_field(sample, "events")
+    #     vprint("[Diarizer] Creating sliding windows from oracle speech segments...")
+    #     windows, times = self._make_windows_from_events(audio, events)
+    #
+    #     return self.predict_windows(
+    #         recording_id=recording_id,
+    #         windows=windows,
+    #         times=times,
+    #     )
 
     def _prepare_audio(self, audio: np.ndarray, sr: int) -> np.ndarray:
         audio = np.asarray(audio, dtype=np.float32)
@@ -203,18 +203,18 @@ class BaselineDiarizer:
 
         return audio.astype(np.float32)
 
-    def _make_windows_from_events(
-        self,
-        audio: np.ndarray,
-        events,
-    ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
-        speech_regions = [
-            (float(ev["start"]), float(ev["end"]))
-            for ev in events
-            if float(ev["end"]) > float(ev["start"])
-        ]
-
-        return self._make_windows_from_regions(audio, speech_regions)
+    # def _make_windows_from_events(
+    #     self,
+    #     audio: np.ndarray,
+    #     events,
+    # ) -> Tuple[List[np.ndarray], List[Tuple[float, float]]]:
+    #     speech_regions = [
+    #         (float(ev["start"]), float(ev["end"]))
+    #         for ev in events
+    #         if float(ev["end"]) > float(ev["start"])
+    #     ]
+    #
+    #     return self._make_windows_from_regions(audio, speech_regions)
 
     def _make_windows_from_regions(
         self,
