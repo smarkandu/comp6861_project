@@ -3,10 +3,31 @@ data:
   annotation_dir: data/ami_public_manual_1.6.2
 
 split:
-  train_recordings: [ES2002a, ES2002b, ES2002c]
-  val_recordings: [ES2003a]
-  test_recordings: [ES2004a]
+train_recordings:
+  - ES2002a
+  - ES2002b
+  - ES2002c
+  - ES2002d
+  - ES2005a
+  - ES2005b
+  - ES2005c
+  - ES2005d
+  - ES2006a
+  - ES2006b
+  - ES2006c
+  - ES2006d
 
+val_recordings:
+  - ES2003a
+  - ES2003b
+  - ES2003c
+  - ES2003d
+
+test_recordings:
+  - ES2004a
+  - ES2004b
+  - ES2004c
+  - ES2004d
 eend:
   input_dim: 80
   hidden_dim: 128
