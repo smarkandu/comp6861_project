@@ -428,7 +428,7 @@ def run_single_recording(
         ref_path = f"outputs/rttm/{config}/{recording_id}_ref.rttm"
         hyp_path = f"outputs/rttm/{config}/{recording_id}_hyp_raw.rttm"
         hyp_map_path = f"outputs/rttm/{config}/{recording_id}_hyp_map.rttm"
-        compare_rttm_path = f"outputs/rttm/{config}/{recording_id}_hyp_map.rttm"
+        compare_rttm_path = f"outputs/rttm/{config}/{recording_id}.jpg"
         write_reference_rttm(sample.events, recording_id, ref_path)
         write_reference_rttm(result_events, recording_id, hyp_path)
         write_reference_rttm(mapped_events, recording_id, hyp_map_path)
