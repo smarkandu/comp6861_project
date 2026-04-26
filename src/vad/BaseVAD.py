@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Sequence, Tuple
 import numpy as np
 import soundfile as sf
-from debug import vprint
+from utils.debug import vprint
 from VADSpeechRegionSelector import VADSpeechRegionSelector
 from SpeechBrainVAD import SpeechBrainVAD
 from OracleSpeechRegionSelector import OracleSpeechRegionSelector

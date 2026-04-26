@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from debug import vprint
+from utils.debug import vprint
 from models.baseline import BaselineDiarizer, DiarizationResult, DiarizationSegment
 
 
