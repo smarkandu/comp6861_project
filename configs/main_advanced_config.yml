@@ -4,28 +4,30 @@ data:
   recording_id: ES2002a
 
 model:
-  model_type: ecapa
+  model_type: advanced
   window_sec: 3.0
   hop_sec: 1.5
   smoothing_kernel: 1
 
 cluster:
   method: spectral
-  num_speakers: null
   estimate_num_speakers: true
+  num_speakers: null
   max_speakers: 10
   n_neighbors: 10
 
 segmentation:
   merge_gap: 0.25
   min_seg_dur: 0.75
+  second_pass: true
+  second_pass_min_dur: 2.0
 
 speech:
-  source: oracle
+  source: oracle   # change to "speechbrain_vad" for realistic setup
   min_speech_overlap: 0.5
 
 vad:
-  threshold: 0.00008
+  threshold: 0.00008   # only used if VAD enabled
 
 evaluation:
   collar: 0.25
