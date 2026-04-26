@@ -4,10 +4,6 @@ from typing import List, Sequence, Tuple
 import numpy as np
 import soundfile as sf
 from utils.debug import vprint
-from vad.VADSpeechRegionSelector import VADSpeechRegionSelector
-from vad.SpeechBrainVAD import SpeechBrainVAD
-from vad.OracleSpeechRegionSelector import OracleSpeechRegionSelector
-from vad.BaseSpeechRegionSelector import BaseSpeechRegionSelector
 
 TimeSpan = Tuple[float, float]
 
@@ -60,24 +56,3 @@ def filter_windows_by_regions(
     )
 
     return kept_windows, kept_times
-
-
-def build_speech_region_selector(
-    source: str,
-    vad_threshold: float = 8e-5,
-    device: str = "cpu",
-) -> BaseSpeechRegionSelector:
-    source = source.lower()
-
-    if source == "oracle":
-        return OracleSpeechRegionSelector()
-
-    if source == "speechbrain_vad":
-        return VADSpeechRegionSelector(
-            SpeechBrainVAD(device=device)
-        )
-
-    raise ValueError(
-        f"Unknown speech source: {source}. "
-        "Expected one of: oracle, energy_vad, speechbrain_vad"
-    )
