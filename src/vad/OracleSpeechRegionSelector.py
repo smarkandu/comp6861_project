@@ -1,6 +1,6 @@
 from BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
 from typing import List
-from src.debug import vprint
+from utils.debug import vprint
 
 class OracleSpeechRegionSelector(BaseSpeechRegionSelector):
     """

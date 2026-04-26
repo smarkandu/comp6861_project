@@ -12,7 +12,7 @@ import yaml
 
 from runner import build_dataset, build_model, run_single_recording
 from vad.BaseVAD import build_speech_region_selector
-from debug import set_verbose, vprint, set_seed
+from utils.debug import set_verbose, vprint, set_seed
 
 
 ROOT = Path(__file__).resolve().parent.parent

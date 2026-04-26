@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 from runner import DiarizationPipeline
-from debug import vprint, set_seed
+from utils.debug import vprint, set_seed
 
 ROOT = Path(__file__).resolve().parent.parent
 

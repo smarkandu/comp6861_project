@@ -15,8 +15,8 @@ from models.advanced import AdvancedDiarizer
 from models.embedders.ECAPAEmbedder import ECAPAEmbedder
 from models.embedders.WavLMEmbedder import WavLMEmbedder
 from vad.BaseVAD import build_speech_region_selector, filter_windows_by_regions
-from debug import vprint, set_debug, set_seed
-from rttm_utils import write_reference_rttm, segments_to_events, compare_rttm
+from utils.debug import vprint, set_debug, set_seed
+from utils.rttm_utils import write_reference_rttm, segments_to_events, compare_rttm
 import numpy as np
 
 

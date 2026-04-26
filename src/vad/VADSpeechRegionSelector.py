@@ -1,5 +1,5 @@
 from __future__ import annotations
-from src.debug import vprint
+from utils.debug import vprint
 from BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
 from BaseVAD import BaseVAD
 from typing import List
