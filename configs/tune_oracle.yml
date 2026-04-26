@@ -1,37 +1,28 @@
 data:
   audio_dir: data/amicorpus
   annotation_dir: data/ami_public_manual_1.6.2
-  recording_id: ES2002a
-
-model:
-  model_type: ecapa
-  window_sec: 3.0
-  hop_sec: 1.5
-  smoothing_kernel: 1
-
-cluster:
-  method: spectral
-  num_speakers: null
-  estimate_num_speakers: true
-  max_speakers: 10
-  n_neighbors: 10
-
-segmentation:
-  merge_gap: 0.25
-  min_seg_dur: 0.75
-
-speech:
-  source: oracle
-  min_speech_overlap: 0.5
-
-vad:
-  threshold: 0.00008
+  recordings: [ES2002a, ES2002b, ES2002c]
 
 evaluation:
   collar: 0.25
   ignore_overlap: true
 
 runtime:
-  debug: true
   cache_dir: outputs/cache
-  use_cache: false
+  use_cache_values: [false]
+  out_csv: outputs/baseline_tuning_results.csv
+  summary_csv: outputs/baseline_tuning_summary.csv
+  verbose: 1
+
+grid:
+  model_types: [ecapa]
+  speech_sources: [oracle]
+
+  window_values: [2.0, 3.0]
+  hop_values: [1.0, 1.5]
+
+  clustering_values: [kmeans]
+  smoothing_values: [1, 3]
+
+  merge_gap_values: [0.25, 0.5]
+  min_seg_dur_values: [0.5, 0.75]
