@@ -175,42 +175,54 @@ def build_collar_mask(events, duration, frame_hop=0.01, collar=0.25):
 
     return mask
 
-# --------------------------------------------------
-# 4. DER Computation (Overlap-Ready)
-# --------------------------------------------------
+def compute_der(
+    reference_frames,
+    hypothesis_frames,
+    ignore_overlap=True,
+    collar_mask=None,
+):
+    missed_speech = 0
+    false_alarm_speech = 0
+    speaker_confusion = 0
+    total_reference_speakers = 0
+    total_scored_frames = 0
 
-def compute_der(ref_frames, hyp_frames, ignore_overlap=True, collar_mask=None):
-    miss = 0
-    false_alarm = 0
-    confusion = 0
-    ref_total = 0
-    scored_frames = 0
-
-    for i, (ref_set, hyp_set) in enumerate(zip(ref_frames, hyp_frames)):
-        if collar_mask is not None and collar_mask[i]:
+    for frame_idx, (ref_speakers, hyp_speakers) in enumerate(
+        zip(reference_frames, hypothesis_frames)
+    ):
+        # Skip collar regions (evaluation exclusion zones)
+        if collar_mask is not None and collar_mask[frame_idx]:
             continue
 
-        if ignore_overlap and len(ref_set) > 1:
+        # Skip overlapping speech if configured
+        if ignore_overlap and len(ref_speakers) > 1:
             continue
 
-        scored_frames += 1
+        total_scored_frames += 1
 
-        R = len(ref_set)
-        H = len(hyp_set)
-        C = len(ref_set.intersection(hyp_set))
+        num_ref = len(ref_speakers)
+        num_hyp = len(hyp_speakers)
+        num_correct = len(ref_speakers.intersection(hyp_speakers))
 
-        ref_total += R
-        miss += max(0, R - H)
-        false_alarm += max(0, H - R)
-        confusion += min(R, H) - C
+        total_reference_speakers += num_ref
 
-    der = (miss + false_alarm + confusion) / ref_total if ref_total > 0 else 0.0
+        # Error components
+        missed_speech += max(0, num_ref - num_hyp)
+        false_alarm_speech += max(0, num_hyp - num_ref)
+        speaker_confusion += min(num_ref, num_hyp) - num_correct
+
+    der = (
+        (missed_speech + false_alarm_speech + speaker_confusion)
+        / total_reference_speakers
+        if total_reference_speakers > 0
+        else 0.0
+    )
 
     return {
         "DER": der,
-        "miss": miss,
-        "false_alarm": false_alarm,
-        "confusion": confusion,
-        "ref_total": ref_total,
-        "scored_frames": scored_frames,
+        "miss": missed_speech,
+        "false_alarm": false_alarm_speech,
+        "confusion": speaker_confusion,
+        "ref_total": total_reference_speakers,
+        "scored_frames": total_scored_frames,
     }
