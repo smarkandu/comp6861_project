@@ -1,6 +1,8 @@
-from pathlib import Path
-import matplotlib.pyplot as plt
 from collections import defaultdict
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from pathlib import Path
+import math
 
 def segments_to_events(segments, mapping=None):
     events = []
@@ -105,4 +107,28 @@ def compare_rttm(title, ref_path, hyp_path, save_path):
     plt.tight_layout()
     plt.title = title
     plt.savefig(save_path)
+    plt.show()
+
+def show_jpg_grid(folder, cols=3):
+    # Get all JPG files
+    image_paths = sorted(Path(folder).glob("*.jpg"))
+
+    if len(image_paths) == 0:
+        print("No JPG files found.")
+        return
+
+    n = len(image_paths)
+    rows = math.ceil(n / cols)
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 3))
+    axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+
+    for i, ax in enumerate(axes):
+        if i < n:
+            img = mpimg.imread(image_paths[i])
+            ax.imshow(img)
+            ax.set_title(image_paths[i].stem, fontsize=8)  # filename as title
+        ax.axis("off")
+
+    plt.tight_layout()
     plt.show()
