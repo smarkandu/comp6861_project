@@ -179,8 +179,10 @@ def main():
     ignore_overlap = bool(evaluation.get("ignore_overlap", True))
     collar = float(evaluation.get("collar", 0.25))
 
-    out_csv = ROOT / runtime.get("out_csv", "outputs/tuning_results.csv")
-    summary_csv = ROOT / runtime.get("summary_csv", "outputs/tuning_summary.csv")
+    config_path = Path(args.config)
+    config_stem = config_path.stem
+    out_csv = ROOT / runtime.get("out_csv", f"outputs/{config_stem}_tuning_results.csv")
+    summary_csv = ROOT / runtime.get("summary_csv", f"outputs/{config_stem}_tuning_summary.csv")
     cache_dir = ROOT / runtime.get("cache_dir", "outputs/cache")
 
     configs = make_grid(grid, runtime)

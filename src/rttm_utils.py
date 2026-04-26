@@ -1,6 +1,6 @@
 from pathlib import Path
-
-from pathlib import Path
+import matplotlib.pyplot as plt
+from collections import defaultdict
 
 def segments_to_events(segments, mapping=None):
     events = []
@@ -60,3 +60,47 @@ def write_reference_rttm(events, recording_id: str, output_path: str):
                     f"<NA> <NA> {speaker} <NA> <NA>\n"
                 )
                 f.write(line)
+
+def load_rttm(rttm_path):
+    segments = []
+    with open(rttm_path, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            start = float(parts[3])
+            dur = float(parts[4])
+            speaker = parts[7]
+            segments.append((start, start + dur, speaker))
+    return segments
+
+
+def group_by_speaker(segments):
+    grouped = defaultdict(list)
+    for start, end, speaker in segments:
+        grouped[speaker].append((start, end))
+    return grouped
+
+
+def plot_rttm(ax, grouped_segments, title):
+    for i, (speaker, segs) in enumerate(sorted(grouped_segments.items())):
+        for start, end in segs:
+            ax.barh(i, end - start, left=start)
+    ax.set_yticks(range(len(grouped_segments)))
+    ax.set_yticklabels(sorted(grouped_segments.keys()))
+    ax.set_title(title)
+    ax.set_xlabel("Time (s)")
+
+
+def compare_rttm(ref_path, hyp_path):
+    ref = load_rttm(ref_path)
+    hyp = load_rttm(hyp_path)
+
+    ref_grouped = group_by_speaker(ref)
+    hyp_grouped = group_by_speaker(hyp)
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+
+    plot_rttm(axes[0], ref_grouped, "Reference RTTM")
+    plot_rttm(axes[1], hyp_grouped, "Predicted RTTM")
+
+    plt.tight_layout()
+    plt.show()

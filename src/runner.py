@@ -16,7 +16,7 @@ from models.embedders.ECAPAEmbedder import ECAPAEmbedder
 from models.embedders.WavLMEmbedder import WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug, set_seed
-from rttm_generator import write_reference_rttm, segments_to_events
+from rttm_utils import write_reference_rttm, segments_to_events
 import numpy as np
 
 
