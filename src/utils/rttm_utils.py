@@ -109,7 +109,7 @@ def compare_rttm(title, ref_path, hyp_path, save_path):
     plt.savefig(save_path)
     plt.show()
 
-def show_jpg_grid(folder, cols=3):
+def show_jpg_grid(title, folder, cols=3):
     # Get all JPG files
     image_paths = sorted(Path(folder).glob("*.jpg"))
 
@@ -130,5 +130,6 @@ def show_jpg_grid(folder, cols=3):
             ax.set_title(image_paths[i].stem, fontsize=8)  # filename as title
         ax.axis("off")
 
+    fig.suptitle(title, fontsize=16)
     plt.tight_layout()
     plt.show()
