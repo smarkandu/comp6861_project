@@ -108,7 +108,7 @@ def evaluate_config_on_recording(
     collar: float,
     ignore_overlap: bool,
 ):
-    dataset = build_dataset(
+    dataset, _ = build_dataset(
         audio_dir=audio_dir,
         annotation_dir=annotation_dir,
         recording_id=recording_id,

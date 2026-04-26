@@ -1,7 +1,14 @@
 data:
   audio_dir: data/amicorpus
   annotation_dir: data/ami_public_manual_1.6.2
-  recording_id: null
+  recording_ids:
+    - ES2002b
+    - ES2002c
+    - ES2002d
+    - ES2003b
+    - ES2004b
+    - ES2005a
+    - ES2005b
 
 model:
   model_type: ecapa

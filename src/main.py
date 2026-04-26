@@ -35,7 +35,7 @@ def main():
         project_root=str(ROOT),
         audio_dir=cfg["data"]["audio_dir"],
         annotation_dir=cfg["data"]["annotation_dir"],
-        recording_id=cfg["data"]["recording_id"],
+        recording_ids=cfg["data"]["recording_ids"], #list
         debug=cfg["runtime"]["debug"],
         vad_threshold=cfg["vad"]["threshold"],
         window_sec=cfg["model"]["window_sec"],

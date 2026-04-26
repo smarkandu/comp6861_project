@@ -25,7 +25,7 @@ class DiarizationPipeline:
         project_root,
         audio_dir,
         annotation_dir,
-        recording_id,
+        recording_ids,
         debug,
         vad_threshold,
         window_sec,
@@ -46,7 +46,7 @@ class DiarizationPipeline:
         self.project_root = project_root
         self.audio_dir = audio_dir
         self.annotation_dir = annotation_dir
-        self.recording_id = recording_id
+        self.recording_ids = recording_ids
         self.debug = debug
         self.vad_threshold = vad_threshold
         self.window_sec = window_sec
@@ -70,7 +70,7 @@ class DiarizationPipeline:
         vprint("\n=== Run Configuration ===")
         vprint(f"audio_dir:        {self.audio_dir}")
         vprint(f"annotation_dir:   {self.annotation_dir}")
-        vprint(f"recording_id:     {self.recording_id}")
+        vprint(f"recording_ids:     {self.recording_ids}")
         vprint(f"debug:            {self.debug}")
         vprint(f"use_cache:        {self.use_embedding_cache}")
 
@@ -93,19 +93,19 @@ class DiarizationPipeline:
         vprint("=== Starting Diarization Pipeline ===")
 
         vprint("\n[1/7] Loading dataset...")
-        dataset = build_dataset(
+        dataset, _ = build_dataset(
             audio_dir=self.audio_dir,
             annotation_dir=self.annotation_dir,
-            recording_id=self.recording_id,
+            recording_ids=self.recording_ids,
             target_sr=16000,
         )
 
         vprint("[2/7] Selecting recordings...")
-        if self.recording_id is None:
+        if self.recording_ids is None:
             vprint("[INFO] No recording_id provided → running ALL recordings")
             recording_ids = dataset.list_recordings()
         else:
-            recording_ids = [self.recording_id]
+            recording_ids = self.recording_ids
 
         print("recording ids: ", recording_ids)
 
@@ -210,15 +210,25 @@ def print_metrics(metrics: dict) -> None:
             vprint(f"{key}: {value}")
 
 
-def build_dataset(audio_dir, annotation_dir, recording_id=None, target_sr=16000):
-    recording_audio_dir = resolve_recording_audio_dir(audio_dir, recording_id)
-
-    return AMIDataset(
-        str(recording_audio_dir),
-        annotation_dir,
+def build_dataset(audio_dir, annotation_dir, target_sr, recording_ids):
+    dataset = AMIDataset(
+        audio_dir=audio_dir,
+        annotation_dir=annotation_dir,
         target_sr=target_sr,
     )
 
+    if recording_ids is None:
+        recording_ids = dataset.list_recordings()
+    elif isinstance(recording_ids, str):
+        recording_ids = [recording_ids]
+    elif isinstance(recording_ids, list):
+        pass
+    else:
+        raise ValueError(
+            "recording_ids must be None, a string, or a list of strings"
+        )
+
+    return dataset, recording_ids
 
 def select_recording(dataset, recording_id):
     if recording_id is not None:
