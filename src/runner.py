@@ -15,7 +15,7 @@ from models.advanced import AdvancedDiarizer
 from models.embedders import ECAPAEmbedder, WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug
-from rttm_generator import write_reference_rttm
+from rttm_generator import write_reference_rttm, segments_to_events
 
 
 class DiarizationPipeline:
@@ -330,12 +330,6 @@ def run_single_recording(
     vprint(f"Speaker IDs: {sample.speakers}")
     vprint(f"Number of reference events: {len(sample.events)}")
 
-    write_reference_rttm(
-        events=sample.events,
-        recording_id=recording_id,
-        output_path=f"outputs/rttm/{recording_id}_ref.rttm",
-    )
-
     model.set_num_speakers(sample.num_speakers)
 
     speech_regions = speech_selector.get_speech_regions(sample)
@@ -374,6 +368,11 @@ def run_single_recording(
         times=times,
     )
 
+    # Write RTTM
+    result_events = segments_to_events(result.segments)
+    write_reference_rttm(sample.events, recording_id, f"outputs/rttm/{recording_id}_ref.rttm")
+    write_reference_rttm(result_events, recording_id, f"outputs/rttm/{recording_id}_hyp_raw.rttm")
+
     metrics, mapping = evaluate_result(
         sample=sample,
         result=result,
@@ -381,5 +380,7 @@ def run_single_recording(
         ignore_overlap=ignore_overlap,
         frame_hop=frame_hop,
     )
+    mapped_events = segments_to_events(result.segments, mapping=mapping)
+    write_reference_rttm(mapped_events, recording_id, f"outputs/rttm/{recording_id}_hyp_map.rttm")
 
     return sample, result, metrics, mapping
