@@ -1,7 +1,7 @@
 data:
   audio_dir: data/amicorpus
   annotation_dir: data/ami_public_manual_1.6.2
-  recordings: [ES2002a, ES2002b, ES2002c]
+  recordings: [ES2002a, ES2003a, ES2004a]
 
 evaluation:
   collar: 0.25
