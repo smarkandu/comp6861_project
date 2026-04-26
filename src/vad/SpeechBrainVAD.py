@@ -1,4 +1,4 @@
-from BaseVAD import BaseVAD
+from vad.BaseVAD import BaseVAD
 from speechbrain.utils.fetching import LocalStrategy
 from speechbrain.inference.VAD import VAD
 

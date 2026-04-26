@@ -1,7 +1,7 @@
 from __future__ import annotations
 from utils.debug import vprint
-from BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
-from BaseVAD import BaseVAD
+from vad.BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
+from vad.BaseVAD import BaseVAD
 from typing import List
 
 class VADSpeechRegionSelector(BaseSpeechRegionSelector):

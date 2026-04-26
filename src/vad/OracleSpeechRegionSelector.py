@@ -1,4 +1,4 @@
-from BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
+from vad.BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
 from typing import List
 from utils.debug import vprint
 

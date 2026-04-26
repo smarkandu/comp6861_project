@@ -4,10 +4,10 @@ from typing import List, Sequence, Tuple
 import numpy as np
 import soundfile as sf
 from utils.debug import vprint
-from VADSpeechRegionSelector import VADSpeechRegionSelector
-from SpeechBrainVAD import SpeechBrainVAD
-from OracleSpeechRegionSelector import OracleSpeechRegionSelector
-from BaseSpeechRegionSelector import BaseSpeechRegionSelector
+from vad.VADSpeechRegionSelector import VADSpeechRegionSelector
+from vad.SpeechBrainVAD import SpeechBrainVAD
+from vad.OracleSpeechRegionSelector import OracleSpeechRegionSelector
+from vad.BaseSpeechRegionSelector import BaseSpeechRegionSelector
 
 TimeSpan = Tuple[float, float]
 
