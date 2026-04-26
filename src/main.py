@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 from runner import DiarizationPipeline
+from debug import vprint, set_debug
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -52,7 +53,16 @@ def main():
         min_speech_overlap=cfg["speech"]["min_speech_overlap"]
     )
 
-    pipeline.run()
+    # Run Pipeline
+    all_results, mean_der, std_der = pipeline.run()
+
+    # Print Results
+    vprint("\n=== Summary ===")
+    for r in all_results:
+        vprint(f"{r['recording_id']} → DER: {r['metrics']['DER']:.4f}")
+    if mean_der is not None:
+        vprint(f"\nMean DER: {mean_der:.4f}")
+        vprint(f"Std DER:  {std_der:.4f}")
 
 if __name__ == "__main__":
     main()

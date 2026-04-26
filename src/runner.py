@@ -16,6 +16,7 @@ from models.embedders import ECAPAEmbedder, WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug
 from rttm_generator import write_reference_rttm, segments_to_events
+import numpy as np
 
 
 class DiarizationPipeline:
@@ -70,7 +71,6 @@ class DiarizationPipeline:
         vprint(f"audio_dir:        {self.audio_dir}")
         vprint(f"annotation_dir:   {self.annotation_dir}")
         vprint(f"recording_id:     {self.recording_id}")
-        # vprint(f"device:           {device}")
         vprint(f"debug:            {self.debug}")
         vprint(f"use_cache:        {self.use_embedding_cache}")
 
@@ -100,11 +100,16 @@ class DiarizationPipeline:
             target_sr=16000,
         )
 
-        vprint("[2/7] Selecting recording...")
-        recording_id = select_recording(dataset, self.recording_id)
+        vprint("[2/7] Selecting recordings...")
+        if self.recording_id is None:
+            vprint("[INFO] No recording_id provided → running ALL recordings")
+            recording_ids = dataset.list_recordings()
+        else:
+            recording_ids = [self.recording_id]
+
+        print("recording ids: ", recording_ids)
 
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
-
         vprint(f"[3/7] Initializing model on {device}...")
         model = build_model(
             model_type=self.model_type,
@@ -128,44 +133,61 @@ class DiarizationPipeline:
         )
 
         vprint("[4/7] Running diarization and evaluation...")
-        sample, result, metrics, mapping = run_single_recording(
-            dataset=dataset,
-            recording_id=recording_id,
-            model=model,
-            speech_selector=speech_selector,
-            speech_source=self.speech_source,
-            min_speech_overlap=self.min_speech_overlap,
-            collar=self.collar,
-            ignore_overlap=self.ignore_overlap,
-        )
+        all_results = []
 
-        vprint("\n=== Diarization Complete ===", 2)
-        vprint(f"Predicted segments: {len(result.segments)}", 2)
-        vprint("Showing first 20 predicted segments:", 2)
+        for recording_id in recording_ids:
+            vprint(f"\n=== Processing {recording_id} ===")
+            sample, result, metrics, mapping = run_single_recording(
+                dataset=dataset,
+                recording_id=recording_id,
+                model=model,
+                speech_selector=speech_selector,
+                speech_source=self.speech_source,
+                min_speech_overlap=self.min_speech_overlap,
+                collar=self.collar,
+                ignore_overlap=self.ignore_overlap,
+            )
 
-        for seg in result.segments[:20]:
-            vprint(seg, 2)
+            vprint("\n=== Diarization Complete ===", 2)
+            vprint(f"Predicted segments: {len(result.segments)}", 2)
+            vprint("Showing first 20 predicted segments:", 2)
 
-        if len(result.segments) > 20:
-            vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
+            for seg in result.segments[:20]:
+                vprint(seg, 2)
 
-        vprint("[5/7] Saving predictions...")
-        output_dir = Path(self.project_root) / "outputs"
-        pred_file = save_segments(result, output_dir)
-        vprint(f"Saved predictions to: {pred_file}", 2)
+            if len(result.segments) > 20:
+                vprint(f"... ({len(result.segments) - 20} more segments not shown)", 2)
 
-        vprint("[6/7] Reporting DER...")
-        vprint(f"Cluster mapping: {mapping}")
-        print_metrics(metrics)
+            vprint("[5/7] Saving predictions...")
+            output_dir = Path(self.project_root) / "outputs"
+            pred_file = save_segments(result, output_dir)
+            vprint(f"Saved predictions to: {pred_file}", 2)
 
-        return {
-            "sample": sample,
-            "result": result,
-            "metrics": metrics,
-            "mapping": mapping,
-            "prediction_file": pred_file,
-        }
+            vprint("[6/7] Reporting DER...")
+            vprint(f"Cluster mapping: {mapping}")
+            print_metrics(metrics)
 
+            all_results.append({
+                "recording_id": recording_id,
+                "sample": sample,
+                "result": result,
+                "metrics": metrics,
+                "mapping": mapping,
+                "prediction_file": pred_file,
+            })
+
+        # obtain all DERS
+        ders = [r["metrics"]["DER"] for r in all_results if "DER" in r["metrics"]]
+
+        # Calculate the mean DER and the std deviation for DER
+        if ders:
+            mean_der = float(np.mean(ders))
+            std_der = float(np.std(ders))
+        else:
+            mean_der = None
+            std_der = None
+
+        return all_results, mean_der, std_der
 
 def save_segments(result, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
