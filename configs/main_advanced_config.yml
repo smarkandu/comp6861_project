@@ -1,7 +1,7 @@
 data:
   audio_dir: data/amicorpus
   annotation_dir: data/ami_public_manual_1.6.2
-  recording_id: ES2002a
+  recording_id: null
 
 model:
   model_type: advanced
