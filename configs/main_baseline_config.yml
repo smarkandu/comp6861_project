@@ -6,7 +6,7 @@ data:
 model:
   model_type: ecapa
   window_sec: 3.0
-  hop_sec: 1.5
+  hop_sec: 1
   smoothing_kernel: 1
 
 cluster:
@@ -18,14 +18,14 @@ cluster:
 
 segmentation:
   merge_gap: 0.25
-  min_seg_dur: 0.75
+  min_seg_dur: 0.5
 
 speech:
   source: oracle
   min_speech_overlap: 0.5
 
 vad:
-  threshold: 0.00008
+  threshold: 0.0001
 
 evaluation:
   collar: 0.25
