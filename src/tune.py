@@ -12,7 +12,7 @@ import yaml
 
 from runner import build_dataset, build_model, run_single_recording
 from models.vad import build_speech_region_selector
-from debug import set_verbose, vprint
+from debug import set_verbose, vprint, set_seed
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -287,4 +287,5 @@ def main():
 
 
 if __name__ == "__main__":
+    set_seed()
     main()

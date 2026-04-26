@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 from runner import DiarizationPipeline
-from debug import vprint, set_debug
+from debug import vprint, set_seed
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -19,6 +19,7 @@ def load_config(config_path: str) -> dict:
 
 
 def main():
+    set_seed()
     parser = argparse.ArgumentParser(description="AMI speaker diarization entry point.")
 
     parser.add_argument(

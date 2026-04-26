@@ -1,3 +1,8 @@
+import os
+import random
+import numpy as np
+import torch
+
 DEBUG = False
 VERBOSE = 1   # 0 = silent, 1 = normal, 2 = debug
 
@@ -25,3 +30,16 @@ def debug_print(msg: str):
 def vprint(msg: str, level: int=1):
     if VERBOSE >= level:
         print(msg)
+
+def set_seed(seed: int = 1234):
+    random.seed(seed)
+    np.random.seed(seed)
+
+    try:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    except ImportError:
+        pass
+
+    vprint(f"[Seed] Set random seed to {seed}", level=2)
