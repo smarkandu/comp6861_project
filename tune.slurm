@@ -30,8 +30,8 @@ module load python cuda 2>/dev/null || true
 source "$SLURM_SUBMIT_DIR/comp6861_env_wsl/bin/activate"
 
 # --- HF cache to scratch (important) ---
-export HF_HOME=/scratch/$USER/.hf
-export HF_HUB_CACHE=/scratch/$USER/.hf/hub
+export HF_HOME=/lustre07/scratch/$USER/.hf
+export HF_HUB_CACHE=/lustre07/scratch/$USER/.hf/hub
 
 # --- Go to project root ---
 cd $SLURM_SUBMIT_DIR
