@@ -1,0 +1,21 @@
+from BaseSpeechRegionSelector import BaseSpeechRegionSelector, TimeSpan
+from typing import List
+from src.debug import vprint
+
+class OracleSpeechRegionSelector(BaseSpeechRegionSelector):
+    """
+    Uses ground-truth annotation events as speech regions.
+    """
+
+    def get_speech_regions(self, sample) -> List[TimeSpan]:
+        regions: List[TimeSpan] = []
+
+        for ev in sample.events:
+            start = float(ev["start"])
+            end = float(ev["end"])
+
+            if end > start:
+                regions.append((start, end))
+
+        vprint(f"[Speech:Oracle] Regions: {len(regions)}")
+        return regions
