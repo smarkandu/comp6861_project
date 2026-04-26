@@ -10,7 +10,7 @@ recordings=(
   ES2004a
   ES2004b
   ES2005a
-  ES2005b
+  ES2005b)
 
 for rec in "${recordings[@]}"; do
   wget -P "amicorpus/${rec}/audio" \
