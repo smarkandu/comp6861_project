@@ -31,6 +31,8 @@ def main():
 
     args = parser.parse_args()
     cfg = load_config(args.config)
+    cfg_path = Path(args.config)
+    cfg_stem = cfg_path.stem
 
     pipeline = DiarizationPipeline(
         project_root=str(ROOT),
@@ -42,6 +44,7 @@ def main():
         window_sec=cfg["model"]["window_sec"],
         hop_sec=cfg["model"]["hop_sec"],
         model_type=cfg["model"]["model_type"],
+        config_stem=cfg_stem,
         smoothing_kernel=cfg["model"]["smoothing_kernel"],
         collar=cfg["evaluation"]["collar"],
         ignore_overlap=cfg["evaluation"]["ignore_overlap"],
@@ -59,11 +62,13 @@ def main():
 
     # Print Results
     vprint("\n=== Summary ===")
-    for r in all_results:
-        vprint(f"{r['recording_id']} → DER: {r['metrics']['DER']:.4f}")
+    for result in all_results:
+        vprint(f"{result['recording_id']} → DER: {result['metrics']['DER']:.4f}")
     if mean_der is not None:
         vprint(f"\nMean DER: {mean_der:.4f}")
         vprint(f"Std DER:  {std_der:.4f}")
 
+    return all_results, mean_der, std_der
+
 if __name__ == "__main__":
-    main()
+    all_results, mean_der, std_der = main()

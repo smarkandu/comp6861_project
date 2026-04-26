@@ -90,7 +90,7 @@ def plot_rttm(ax, grouped_segments, title):
     ax.set_xlabel("Time (s)")
 
 
-def compare_rttm(ref_path, hyp_path):
+def compare_rttm(title, ref_path, hyp_path, save_path):
     ref = load_rttm(ref_path)
     hyp = load_rttm(hyp_path)
 
@@ -103,4 +103,6 @@ def compare_rttm(ref_path, hyp_path):
     plot_rttm(axes[1], hyp_grouped, "Predicted RTTM")
 
     plt.tight_layout()
+    plt.title = title
+    plt.savefig(save_path)
     plt.show()

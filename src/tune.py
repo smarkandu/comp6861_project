@@ -32,6 +32,7 @@ class TuneConfig:
     merge_gap: float
     min_seg_dur: float
     use_cache: bool
+    config_stem: str
 
 
 def load_yaml(path: str) -> dict:
@@ -48,7 +49,7 @@ def list_from_grid(grid: dict, key: str, default):
     return value if isinstance(value, list) else [value]
 
 
-def make_grid(grid: dict, runtime: dict) -> List[TuneConfig]:
+def make_grid(grid: dict, runtime: dict, config_stem: str) -> List[TuneConfig]:
     configs = []
 
     for model_type in list_from_grid(grid, "model_types", ["ecapa"]):
@@ -80,6 +81,7 @@ def make_grid(grid: dict, runtime: dict) -> List[TuneConfig]:
                                                             merge_gap=float(merge_gap),
                                                             min_seg_dur=float(min_seg_dur),
                                                             use_cache=bool(use_cache),
+                                                            config_stem=config_stem
                                                         )
                                                     )
 
@@ -142,6 +144,7 @@ def evaluate_config_on_recording(
         model=model,
         speech_selector=speech_selector,
         speech_source=config.speech_source,
+        config=TuneConfig.config_stem,
         min_speech_overlap=config.min_speech_overlap,
         collar=collar,
         ignore_overlap=ignore_overlap,
@@ -185,9 +188,10 @@ def main():
     summary_csv = ROOT / runtime.get("summary_csv", f"outputs/{config_stem}_tuning_summary.csv")
     cache_dir = ROOT / runtime.get("cache_dir", "outputs/cache")
 
-    configs = make_grid(grid, runtime)
+    configs = make_grid(grid, runtime, config_stem)
 
     vprint("\n=== Tuning Setup ===")
+    vprint(f"config_stem:     {config_stem}")
     vprint(f"recordings:      {recordings}")
     vprint(f"device:          {device}")
     vprint(f"num_configs:     {len(configs)}")

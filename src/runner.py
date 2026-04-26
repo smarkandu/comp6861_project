@@ -16,7 +16,7 @@ from models.embedders.ECAPAEmbedder import ECAPAEmbedder
 from models.embedders.WavLMEmbedder import WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug, set_seed
-from rttm_utils import write_reference_rttm, segments_to_events
+from rttm_utils import write_reference_rttm, segments_to_events, compare_rttm
 import numpy as np
 
 
@@ -32,6 +32,7 @@ class DiarizationPipeline:
         window_sec,
         hop_sec,
         model_type,
+        config_stem,
         smoothing_kernel=1,
         collar=0.25,
         ignore_overlap=True,
@@ -53,6 +54,7 @@ class DiarizationPipeline:
         self.window_sec = window_sec
         self.hop_sec = hop_sec
         self.model_type = model_type
+        self.config_stem = config_stem
         self.smoothing_kernel = smoothing_kernel
         self.collar = collar
         self.ignore_overlap = ignore_overlap
@@ -70,6 +72,7 @@ class DiarizationPipeline:
         set_debug(self.debug)
 
         vprint("\n=== Run Configuration ===")
+        vprint(f"config stem:        {self.config_stem}")
         vprint(f"audio_dir:        {self.audio_dir}")
         vprint(f"annotation_dir:   {self.annotation_dir}")
         vprint(f"recording_ids:     {self.recording_ids}")
@@ -145,9 +148,11 @@ class DiarizationPipeline:
                 model=model,
                 speech_selector=speech_selector,
                 speech_source=self.speech_source,
+                config= self.config_stem,
                 min_speech_overlap=self.min_speech_overlap,
                 collar=self.collar,
                 ignore_overlap=self.ignore_overlap,
+                generate_output=True
             )
 
             vprint("\n=== Diarization Complete ===", 2)
@@ -354,10 +359,12 @@ def run_single_recording(
     model,
     speech_selector,
     speech_source,
+    config,
     min_speech_overlap=0.5,
     collar=0.25,
     ignore_overlap=True,
     frame_hop=0.01,
+    generate_output=False
 ):
     sample = dataset.load_sample(recording_id)
 
@@ -407,8 +414,6 @@ def run_single_recording(
 
     # Write RTTM
     result_events = segments_to_events(result.segments)
-    write_reference_rttm(sample.events, recording_id, f"outputs/rttm/{recording_id}_ref.rttm")
-    write_reference_rttm(result_events, recording_id, f"outputs/rttm/{recording_id}_hyp_raw.rttm")
 
     metrics, mapping = evaluate_result(
         sample=sample,
@@ -418,6 +423,15 @@ def run_single_recording(
         frame_hop=frame_hop,
     )
     mapped_events = segments_to_events(result.segments, mapping=mapping)
-    write_reference_rttm(mapped_events, recording_id, f"outputs/rttm/{recording_id}_hyp_map.rttm")
+
+    if generate_output:
+        ref_path = f"outputs/rttm/{config}/{recording_id}_ref.rttm"
+        hyp_path = f"outputs/rttm/{config}/{recording_id}_hyp_raw.rttm"
+        hyp_map_path = f"outputs/rttm/{config}/{recording_id}_hyp_map.rttm"
+        compare_rttm_path = f"outputs/rttm/{config}/{recording_id}_hyp_map.rttm"
+        write_reference_rttm(sample.events, recording_id, ref_path)
+        write_reference_rttm(result_events, recording_id, hyp_path)
+        write_reference_rttm(mapped_events, recording_id, hyp_map_path)
+        compare_rttm(recording_id, ref_path, hyp_map_path, compare_rttm_path)
 
     return sample, result, metrics, mapping
