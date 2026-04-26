@@ -12,7 +12,8 @@ from eval.evaluation import (
 )
 from models.baseline import BaselineDiarizer
 from models.advanced import AdvancedDiarizer
-from src.models.embedders.embedders import ECAPAEmbedder, WavLMEmbedder
+from models.embedders.ECAPAEmbedder import ECAPAEmbedder
+from models.embedders.WavLMEmbedder import WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug
 from rttm_generator import write_reference_rttm, segments_to_events

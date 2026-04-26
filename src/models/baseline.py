@@ -9,7 +9,8 @@ from scipy.signal import medfilt
 
 from debug import vprint
 from models.clustering.clustering import KMeansClustering, SpectralClusteringModel
-from models.embedders.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
+from models.embedders.BaseSpeakerEmbedder import BaseSpeakerEmbedder
+from models.embedders.ECAPAEmbedder import ECAPAEmbedder
 
 
 @dataclass
