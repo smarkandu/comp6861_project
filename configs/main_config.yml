@@ -21,7 +21,7 @@ segmentation:
   min_seg_dur: 0.75
 
 speech:
-  source: speechbrain_vad
+  source: oracle
   min_speech_overlap: 0.5
 
 vad:
