@@ -8,8 +8,8 @@ import numpy as np
 from scipy.signal import medfilt
 
 from debug import vprint
-from models.clustering import KMeansClustering, SpectralClusteringModel
-from models.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
+from models.clustering.clustering import KMeansClustering, SpectralClusteringModel
+from models.embedders.embedders import BaseSpeakerEmbedder, ECAPAEmbedder
 
 
 @dataclass

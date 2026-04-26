@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 
-from datasets.ami import AMIDataset, resolve_recording_audio_dir
+from datasets.ami import AMIDataset
 from eval.evaluation import (
     apply_mapping_to_frame_sets,
     build_collar_mask,
@@ -12,7 +12,7 @@ from eval.evaluation import (
 )
 from models.baseline import BaselineDiarizer
 from models.advanced import AdvancedDiarizer
-from models.embedders import ECAPAEmbedder, WavLMEmbedder
+from src.models.embedders.embedders import ECAPAEmbedder, WavLMEmbedder
 from models.vad import build_speech_region_selector, filter_windows_by_regions
 from debug import vprint, set_debug
 from rttm_generator import write_reference_rttm, segments_to_events
