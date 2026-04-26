@@ -111,7 +111,7 @@ def evaluate_config_on_recording(
     dataset, _ = build_dataset(
         audio_dir=audio_dir,
         annotation_dir=annotation_dir,
-        recording_id=recording_id,
+        recording_ids=recording_id,
         target_sr=16000,
     )
 
