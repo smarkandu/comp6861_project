@@ -228,23 +228,20 @@ def build_model(
     merge_gap=0.25,
     min_seg_dur=0.75,
 ):
-    normalized = model_type.lower()
+    model_type = model_type.lower()
 
-    if normalized in {"baseline", "ecapa"}:
+    if model_type in {"baseline", "ecapa"}:
         vprint("[Model] Using ECAPA-TDNN embeddings.")
         embedder = ECAPAEmbedder(device=device)
-        cls = BaselineDiarizer
 
-    elif normalized == "wavlm":
+    elif model_type == "wavlm":
         vprint("[Model] Using WavLM embeddings.")
         embedder = WavLMEmbedder(device=device)
-        cls = BaselineDiarizer
 
-    elif normalized == "advanced":
-        vprint("[Model] Using legacy AdvancedDiarizer with ECAPA embeddings.")
-        embedder = ECAPAEmbedder(device=device)
-        cls = AdvancedDiarizer
-
+    elif model_type == "advanced":
+        vprint("[Model] Using AdvancedDiarizer with WavLM embeddings.")
+        # embedder = ECAPAEmbedder(device=device)
+        embedder = WavLMEmbedder(device=device)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
@@ -264,8 +261,14 @@ def build_model(
         min_seg_dur=min_seg_dur,
     )
 
-    return cls(**common_kwargs)
-
+    # Generates Model
+    if model_type in {"baseline", "ecapa"}:
+        return BaselineDiarizer(**common_kwargs)
+    elif model_type == "wavlm":
+        return AdvancedDiarizer(**common_kwargs)
+    elif model_type == "advanced":
+        return AdvancedDiarizer(**common_kwargs)
+    return None
 
 def evaluate_result(
     sample,

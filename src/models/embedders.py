@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
 
 
 class BaseSpeakerEmbedder(ABC):
@@ -87,8 +88,6 @@ class WavLMEmbedder(BaseSpeakerEmbedder):
     ) -> None:
         self.device = device
         self.model_name = model_name
-
-        from transformers import Wav2Vec2FeatureExtractor, WavLMForXVector
 
         self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(model_name)
         self.model = WavLMForXVector.from_pretrained(
