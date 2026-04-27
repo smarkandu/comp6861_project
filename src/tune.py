@@ -144,7 +144,7 @@ def evaluate_config_on_recording(
         model=model,
         speech_selector=speech_selector,
         speech_source=config.speech_source,
-        config=TuneConfig.config_stem,
+        config=config.config_stem,
         min_speech_overlap=config.min_speech_overlap,
         collar=collar,
         ignore_overlap=ignore_overlap,
