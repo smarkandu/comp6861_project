@@ -11,7 +11,7 @@ import torch
 import yaml
 
 from runner import build_dataset, build_model, run_single_recording
-from vad.SpeechRegionSelectorFactory import build_speech_region_selector
+from vad.vad import build_speech_region_selector
 from utils.debug import set_verbose, vprint, set_seed
 import traceback
 
