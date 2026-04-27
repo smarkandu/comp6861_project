@@ -378,7 +378,8 @@ def run_single_recording(
     model.set_num_speakers(sample.num_speakers)
 
     speech_regions = speech_selector.get_speech_regions(sample)
-    vprint(f"Number of speech regions: {len(speech_regions)}")
+    if speech_regions is not None:
+        vprint(f"Number of speech regions: {len(speech_regions)}")
 
     audio = model._prepare_audio(sample.audio, sample.sr)
 
