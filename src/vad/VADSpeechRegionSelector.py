@@ -14,5 +14,7 @@ class VADSpeechRegionSelector(BaseSpeechRegionSelector):
 
     def get_speech_regions(self, sample) -> List[TimeSpan]:
         regions = self.vad.get_speech_regions(sample.audio, sample.sr)
-        vprint(f"[Speech:VAD] Regions: {len(regions)}")
+
+        if regions is not None:
+            vprint(f"[Speech:Oracle] Regions: {len(regions)}")
         return regions

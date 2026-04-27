@@ -17,5 +17,6 @@ class OracleSpeechRegionSelector(BaseSpeechRegionSelector):
             if end > start:
                 regions.append((start, end))
 
-        vprint(f"[Speech:Oracle] Regions: {len(regions)}")
+        if regions is not None:
+            vprint(f"[Speech:Oracle] Regions: {len(regions)}")
         return regions
