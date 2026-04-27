@@ -1,0 +1,99 @@
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import List, Sequence, Tuple
+import tempfile
+import numpy as np
+import soundfile as sf
+from debug import vprint
+
+TimeSpan = Tuple[float, float]
+
+class BaseSpeechRegionSelector(ABC):
+    @abstractmethod
+    def get_speech_regions(self, sample) -> List[TimeSpan]:
+        raise NotImplementedError
+
+
+class OracleSpeechRegionSelector(BaseSpeechRegionSelector):
+    """
+    Uses ground-truth annotation events as speech regions.
+    """
+
+    def get_speech_regions(self, sample) -> List[TimeSpan]:
+        regions: List[TimeSpan] = []
+
+        for ev in sample.events:
+            start = float(ev["start"])
+            end = float(ev["end"])
+
+            if end > start:
+                regions.append((start, end))
+
+        vprint(f"[Speech:Oracle] Regions: {len(regions)}")
+        return regions
+
+
+class VADSpeechRegionSelector(BaseSpeechRegionSelector):
+    """
+    Uses a VAD backend to estimate speech regions from audio.
+    """
+
+    def __init__(self, vad: BaseVAD):
+        self.vad = vad
+
+    def get_speech_regions(self, sample) -> List[TimeSpan]:
+        regions = self.vad.get_speech_regions(sample.audio, sample.sr)
+        vprint(f"[Speech:VAD] Regions: {len(regions)}")
+        return regions
+
+class BaseVAD(ABC):
+    @abstractmethod
+    def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
+        raise NotImplementedError
+
+# VAD implementations
+class EnergyVAD(BaseVAD):
+    def __init__(self, threshold: float = 8e-5):
+        self.threshold = threshold
+
+    def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
+        duration = len(audio) / float(sr)
+        energy = float(np.mean(audio ** 2))
+
+        if energy > self.threshold:
+            return [(0.0, duration)]
+
+        return []
+
+
+class SpeechBrainVAD(BaseVAD):
+    def __init__(
+        self,
+        source: str = "speechbrain/vad-crdnn-libriparty",
+        savedir: str = "pretrained_vad",
+        device: str = "cpu",
+        activation_th: float = 0.5,
+        deactivation_th: float = 0.25,
+    ):
+        self.source = source
+        self.savedir = savedir
+        self.device = device
+        self.activation_th = activation_th
+        self.deactivation_th = deactivation_th
+
+        from speechbrain.utils.fetching import LocalStrategy
+        from speechbrain.inference.VAD import VAD
+
+        self.vad = VAD.from_hparams(
+            source=source,
+            savedir=savedir,
+            local_strategy=LocalStrategy.COPY,
+        )
+
+    def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        sf.write(tmp_path, audio, sr)
+
+        boundaries = self.vad.get_speech_segments(tmp_path)
