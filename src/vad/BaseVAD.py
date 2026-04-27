@@ -8,9 +8,7 @@ from utils.debug import vprint
 TimeSpan = Tuple[float, float]
 
 class BaseVAD(ABC):
-    @abstractmethod
-    def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
-        raise NotImplementedError
+    pass
 
 # --------------------------------------------------
 # Utility functions
