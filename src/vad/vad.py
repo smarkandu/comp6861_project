@@ -1,14 +1,12 @@
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import List, Sequence, Tuple
 import tempfile
-
 import numpy as np
 import soundfile as sf
-
 from utils.debug import vprint
-
+from speechbrain.utils.fetching import LocalStrategy
+from speechbrain.inference.VAD import VAD
 
 TimeSpan = Tuple[float, float]
 
@@ -65,41 +63,9 @@ class BaseVAD(ABC):
     def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
         raise NotImplementedError
 
-    # def filter_windows(
-    #     self,
-    #     windows: Sequence[np.ndarray],
-    #     times: Sequence[TimeSpan],
-    #     audio: np.ndarray,
-    #     sr: int,
-    #     min_speech_overlap: float = 0.0,
-    # ) -> Tuple[List[np.ndarray], List[TimeSpan]]:
-    #     speech_regions = self.get_speech_regions(audio, sr)
-    #     return filter_windows_by_regions(
-    #         windows=windows,
-    #         times=times,
-    #         speech_regions=speech_regions,
-    #         min_speech_overlap=min_speech_overlap,
-    #     )
-
-
 # --------------------------------------------------
 # VAD implementations
 # --------------------------------------------------
-
-class EnergyVAD(BaseVAD):
-    def __init__(self, threshold: float = 8e-5):
-        self.threshold = threshold
-
-    def get_speech_regions(self, audio: np.ndarray, sr: int) -> List[TimeSpan]:
-        duration = len(audio) / float(sr)
-        energy = float(np.mean(audio ** 2))
-
-        if energy > self.threshold:
-            return [(0.0, duration)]
-
-        return []
-
-
 class SpeechBrainVAD(BaseVAD):
     def __init__(
         self,
@@ -114,9 +80,6 @@ class SpeechBrainVAD(BaseVAD):
         self.device = device
         self.activation_th = activation_th
         self.deactivation_th = deactivation_th
-
-        from speechbrain.utils.fetching import LocalStrategy
-        from speechbrain.inference.VAD import VAD
 
         self.vad = VAD.from_hparams(
             source=source,
@@ -199,11 +162,6 @@ def build_speech_region_selector(
 
     if source == "oracle":
         return OracleSpeechRegionSelector()
-
-    if source == "energy_vad":
-        return VADSpeechRegionSelector(
-            EnergyVAD(threshold=vad_threshold)
-        )
 
     if source == "speechbrain_vad":
         return VADSpeechRegionSelector(
